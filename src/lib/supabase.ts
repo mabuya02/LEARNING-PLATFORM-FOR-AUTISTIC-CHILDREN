@@ -7,6 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
+// Regular client for normal operations (uses anon key)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Types

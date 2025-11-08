@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -9,7 +9,7 @@ import { User, UserRole, UserCredentials } from '../App';
 import { BookOpen, Heart, Star, Shield, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 interface AuthScreenProps {
-  onLogin: (credentials: UserCredentials) => User | null;
+  onLogin: (credentials: UserCredentials) => Promise<User | null>;
   mockCredentials: UserCredentials[];
 }
 
@@ -20,12 +20,16 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       setError('Please enter both email and password');
       return;
     }
+
+    setIsLoading(true);
+    setError('');
 
     const credentials: UserCredentials = {
       email: email.trim(),
@@ -33,22 +37,35 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
       role
     };
 
-    const user = onLogin(credentials);
-    if (!user) {
-      setError('Invalid credentials. Please check your email, password, and role.');
+    try {
+      const user = await onLogin(credentials);
+      if (!user) {
+        setError('Invalid credentials. Please check your email and password.');
+      }
+    } catch (err) {
+      setError('Login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleDemoLogin = (demoCredentials: UserCredentials) => {
+  const handleDemoLogin = async (demoCredentials: UserCredentials) => {
     setEmail(demoCredentials.email);
     setPassword(demoCredentials.password);
     setRole(demoCredentials.role);
     setError('');
+    setIsLoading(true);
     
-    // Auto login with demo credentials
-    const user = onLogin(demoCredentials);
-    if (!user) {
+    try {
+      // Auto login with demo credentials
+      const user = await onLogin(demoCredentials);
+      if (!user) {
+        setError('Demo login failed');
+      }
+    } catch (err) {
       setError('Demo login failed');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -174,11 +191,11 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
 
           <Button
             onClick={handleLogin}
-            disabled={!email.trim() || !password.trim()}
+            disabled={!email.trim() || !password.trim() || isLoading}
             className="w-full py-3 text-lg"
             size="lg"
           >
-            Sign In
+            {isLoading ? 'Signing In...' : 'Sign In'}
           </Button>
 
           <div className="text-center">
@@ -186,6 +203,7 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
               variant="outline"
               onClick={() => setShowDemo(!showDemo)}
               className="text-sm"
+              disabled={isLoading}
             >
               {showDemo ? 'Hide' : 'Show'} Demo Accounts
             </Button>

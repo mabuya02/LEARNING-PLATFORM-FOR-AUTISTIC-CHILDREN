@@ -4,11 +4,15 @@ import { EducatorDashboard } from './components/EducatorDashboard';
 import { ParentDashboard } from './components/ParentDashboard';
 import { ChildInterface } from './components/ChildInterface';
 import { AdminDashboard } from './components/AdminDashboard';
+import { PasswordResetModal } from './components/PasswordResetModal';
+import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
 import { supabase } from './lib/supabase';
 import { authService } from './services/authService';
 import { moduleService } from './services/moduleService';
 import { progressService } from './services/progressService';
 import { childService } from './services/childService';
+import { adminService } from './services/adminService';
 
 export type UserRole = 'educator' | 'parent' | 'child' | 'admin';
 
@@ -57,6 +61,14 @@ export default function App() {
   const [progressData, setProgressData] = useState<ProgressData[]>([]);
   const [children, setChildren] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Admin-specific state
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allProgress, setAllProgress] = useState<ProgressData[]>([]);
+
+  // Password reset state
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [tempPasswordEmail, setTempPasswordEmail] = useState<string>('');
 
   // Check for existing session on mount
   useEffect(() => {
@@ -93,16 +105,21 @@ export default function App() {
   // Load user data from Supabase
   const loadUserData = async (userId: string) => {
     try {
+      console.log('📊 Loading user data for userId:', userId);
       const profile = await authService.getCurrentProfile();
+      console.log('👤 Retrieved profile:', profile);
+      
       if (profile) {
         setUserProfile(profile);
-        setUser({
+        const userObj = {
           id: profile.id,
           name: profile.name,
           email: profile.email,
           role: profile.role,
           childId: profile.child_id
-        });
+        };
+        setUser(userObj);
+        console.log('✅ User state set:', userObj);
 
         // Load modules
         const modules = await moduleService.getModules();
@@ -118,13 +135,41 @@ export default function App() {
           ageGroup: '3-10'
         }));
         setLearningModules(mappedModules);
+        console.log('📚 Loaded modules:', mappedModules.length);
 
+        // Load admin-specific data
+        if (profile.role === 'admin') {
+          console.log('👑 Loading admin-specific data...');
+          
+          // Load all users for admin
+          const users = await adminService.getAllUsers();
+          setAllUsers(users);
+          console.log('✅ Loaded all users:', users.length);
+          
+          // Load all progress for admin
+          const allProgressData = await adminService.getAllProgress();
+          const mappedAllProgress = allProgressData.map((p: any) => ({
+            moduleId: p.module_id,
+            childId: p.child_id,
+            startTime: new Date(p.created_at),
+            endTime: new Date(p.completed_at),
+            attentionSpan: p.time_spent,
+            completionRate: (p.correct_answers / p.total_questions) * 100 || 0,
+            correctAnswers: p.correct_answers,
+            totalQuestions: p.total_questions,
+            engagementLevel: p.score > 80 ? 'high' : p.score > 50 ? 'medium' : 'low'
+          } as ProgressData));
+          setAllProgress(mappedAllProgress);
+          console.log('✅ Loaded all progress:', mappedAllProgress.length);
+        }
         // Load children if parent or educator
-        if (profile.role === 'parent' || profile.role === 'educator') {
+        else if (profile.role === 'parent' || profile.role === 'educator') {
+          console.log('👨‍👩‍👧 Loading children for parent/educator...');
           const childrenData = profile.role === 'parent'
             ? await childService.getChildrenByParent(profile.id)
             : await childService.getChildrenByEducator(profile.id);
           setChildren(childrenData);
+          console.log('✅ Loaded children:', childrenData.length);
 
           // Load progress for first child
           if (childrenData.length > 0) {
@@ -141,11 +186,21 @@ export default function App() {
               engagementLevel: p.score > 80 ? 'high' : p.score > 50 ? 'medium' : 'low'
             } as ProgressData));
             setProgressData(mappedProgress);
+            console.log('✅ Loaded progress data:', mappedProgress.length);
           }
         }
+        // Child user - no additional data needed beyond modules
+        else if (profile.role === 'child') {
+          console.log('👶 Child user logged in - basic setup complete');
+        }
+        
+        console.log('🎉 User data loading complete!');
+      } else {
+        console.warn('⚠️ No profile found for userId:', userId);
       }
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('❌ Error loading user data:', error);
+      throw error; // Re-throw so handleLogin can catch it
     }
   };
 
@@ -425,46 +480,145 @@ export default function App() {
     setProgressData(mockProgress);
   }, []);
 
-  const handleLogin = (credentials: UserCredentials): User | null => {
-    // Validate credentials
-    const validCredential = mockCredentials.find(
-      cred => cred.email === credentials.email && 
-             cred.password === credentials.password &&
-             cred.role === credentials.role
-    );
+  const handleLogin = async (credentials: UserCredentials): Promise<User | null> => {
+    try {
+      console.log('🔐 Attempting login with:', credentials.email);
+      
+      // Sign in with Supabase
+      const { user: authUser, profile } = await authService.signIn(
+        credentials.email,
+        credentials.password
+      );
 
-    if (validCredential) {
-      const userData = mockUsers.find(user => user.email === credentials.email);
-      if (userData) {
-        setUser(userData);
-        return userData;
+      console.log('✅ Auth successful, loading user data...', profile);
+      
+      // Check if user has temporary password flag
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      console.log('🔍 Checking user metadata:', {
+        hasTempPasswordFlag: currentUser?.user_metadata?.temp_password,
+        userMetadata: currentUser?.user_metadata
+      });
+      const hasTempPassword = currentUser?.user_metadata?.temp_password === true;
+
+      // Create user object
+      const userObj: User = {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+        childId: profile.child_id
+      };
+
+      if (hasTempPassword) {
+        console.log('⚠️ User has temporary password, showing reset modal');
+        setTempPasswordEmail(credentials.email);
+        setShowPasswordReset(true);
+        setUser(userObj); // Set user so modal can render properly
+        return userObj;
+      } else {
+        console.log('✅ User does not have temp password flag, proceeding with normal login');
       }
+      
+      // Load user profile and data
+      await loadUserData(authUser.id);
+      
+      // Return the user object from profile
+      return userObj;
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      return null;
     }
-    return null;
   };
 
-  const updateUser = (updatedUser: User) => {
-    setMockUsers(prev => prev.map(user => user.id === updatedUser.id ? updatedUser : user));
-    if (user && user.id === updatedUser.id) {
-      setUser(updatedUser);
+  const handleLogout = async () => {
+    try {
+      await authService.signOut();
+      setUser(null);
+      setUserProfile(null);
+      setAllUsers([]);
+      setAllProgress([]);
+      setLearningModules([]);
+      setProgressData([]);
+      setChildren([]);
+      console.log('✅ Logged out successfully');
+    } catch (error) {
+      console.error('❌ Logout error:', error);
     }
   };
 
-  const deleteUser = (userId: string) => {
-    setMockUsers(prev => prev.filter(user => user.id !== userId));
+  const updateUser = async (updatedUser: User) => {
+    try {
+      await adminService.updateUser(updatedUser.id, {
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        childId: updatedUser.childId, // Include childId for parent-child linking
+      });
+      
+      // Reload all users
+      const users = await adminService.getAllUsers();
+      setAllUsers(users);
+      
+      // Update current user if it's the same
+      if (user && user.id === updatedUser.id) {
+        setUser(updatedUser);
+      }
+      
+      console.log('✅ User updated successfully');
+      toast.success('User updated successfully!');
+    } catch (error) {
+      console.error('❌ Error updating user:', error);
+      toast.error('Failed to update user. Please try again.');
+    }
   };
 
-  const addUser = (newUser: Omit<User, 'id'>) => {
-    const user: User = {
-      ...newUser,
-      id: Date.now().toString()
-    };
-    setMockUsers(prev => [...prev, user]);
-    return user;
+  const deleteUser = async (userId: string) => {
+    try {
+      await adminService.deleteUser(userId);
+      
+      // Reload all users
+      const users = await adminService.getAllUsers();
+      setAllUsers(users);
+      
+      console.log('✅ User deleted successfully');
+      toast.success('User deleted successfully!');
+    } catch (error) {
+      console.error('❌ Error deleting user:', error);
+      toast.error('Failed to delete user. Please try again.');
+    }
   };
 
-  const handleLogout = () => {
-    setUser(null);
+  const addUser = async (newUser: Omit<User, 'id'> & { childId?: string; parentId?: string; educatorId?: string }) => {
+    try {
+      // Generate a default password
+      const defaultPassword = 'ChangeMe123!';
+      
+      const createdUser = await adminService.createUser({
+        email: newUser.email,
+        password: defaultPassword,
+        name: newUser.name,
+        role: newUser.role,
+        childId: newUser.childId,
+        parentId: newUser.parentId,
+        educatorId: newUser.educatorId,
+      });
+      
+      // Reload all users
+      const users = await adminService.getAllUsers();
+      setAllUsers(users);
+      
+      console.log('✅ User created successfully');
+      toast.success('User created successfully!', {
+        duration: 4000,
+        description: 'The user account has been created and an email with temporary password has been sent.'
+      });
+      
+      return createdUser as User;
+    } catch (error) {
+      console.error('❌ Error creating user:', error);
+      toast.error('Failed to create user. Please try again.');
+      throw error;
+    }
   };
 
   const addLearningModule = (module: Omit<LearningModule, 'id'>) => {
@@ -483,23 +637,74 @@ export default function App() {
     setProgressData(prev => [...prev, newProgress]);
   };
 
+  const handlePasswordChanged = async () => {
+    // After password is changed, complete the login process
+    console.log('🔄 Password changed, completing login...');
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      console.log('👤 Current user after password change:', {
+        id: currentUser?.id,
+        email: currentUser?.email,
+        tempPasswordFlag: currentUser?.user_metadata?.temp_password
+      });
+      
+      if (currentUser) {
+        await loadUserData(currentUser.id);
+        setShowPasswordReset(false);
+        setTempPasswordEmail('');
+        console.log('✅ Login completed successfully after password reset');
+      }
+    } catch (error) {
+      console.error('❌ Error completing login after password reset:', error);
+      toast.error('Please log in again with your new password');
+      await handleLogout();
+    }
+  };
+
   if (!user) {
-    return <AuthScreen onLogin={handleLogin} mockCredentials={mockCredentials} />;
+    return (
+      <>
+        <AuthScreen onLogin={handleLogin} mockCredentials={mockCredentials} />
+        <PasswordResetModal
+          isOpen={showPasswordReset}
+          userEmail={tempPasswordEmail}
+          onPasswordChanged={handlePasswordChanged}
+        />
+        <Toaster position="top-right" richColors />
+      </>
+    );
+  }
+
+  // If user is logged in but needs to reset password, show modal and block dashboard
+  if (showPasswordReset) {
+    return (
+      <>
+        <PasswordResetModal
+          isOpen={showPasswordReset}
+          userEmail={tempPasswordEmail}
+          onPasswordChanged={handlePasswordChanged}
+        />
+        <Toaster position="top-right" richColors />
+      </>
+    );
   }
 
   switch (user.role) {
     case 'admin':
       return (
-        <AdminDashboard
-          user={user}
-          allUsers={mockUsers}
-          allModules={learningModules}
-          allProgress={progressData}
-          onUpdateUser={updateUser}
-          onDeleteUser={deleteUser}
-          onAddUser={addUser}
-          onLogout={handleLogout}
-        />
+        <>
+          <AdminDashboard
+            user={user}
+            allUsers={allUsers}
+            allModules={learningModules}
+            allProgress={allProgress}
+            onUpdateUser={updateUser}
+            onDeleteUser={deleteUser}
+            onAddUser={addUser}
+            onLogout={handleLogout}
+          />
+          <Toaster position="top-right" richColors />
+        </>
       );
     case 'educator':
       return (

@@ -40,6 +40,10 @@ CREATE POLICY "Users can update own profile"
 -- (We'll add proper auth checks later)
 -- ============================================
 DROP POLICY IF EXISTS "Anyone authenticated can view active modules" ON learning_modules;
+DROP POLICY IF EXISTS "Anyone can view active modules" ON learning_modules;
+DROP POLICY IF EXISTS "Authenticated users can create modules" ON learning_modules;
+DROP POLICY IF EXISTS "Users can update modules they created" ON learning_modules;
+DROP POLICY IF EXISTS "Educators can create modules" ON learning_modules;
 
 CREATE POLICY "Anyone can view active modules" 
   ON learning_modules FOR SELECT 

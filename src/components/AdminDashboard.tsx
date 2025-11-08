@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -7,6 +7,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { 
+  AlertDialog, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from './ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { User, LearningModule, ProgressData, UserRole } from '../App';
 import { 
@@ -15,7 +24,6 @@ import {
   BookOpen, 
   TrendingUp, 
   LogOut, 
-  Plus, 
   Edit, 
   Trash2,
   UserPlus,
@@ -29,9 +37,9 @@ interface AdminDashboardProps {
   allUsers: User[];
   allModules: LearningModule[];
   allProgress: ProgressData[];
-  onUpdateUser: (user: User) => void;
-  onDeleteUser: (userId: string) => void;
-  onAddUser: (user: Omit<User, 'id'>) => User;
+  onUpdateUser: (user: User) => void | Promise<void>;
+  onDeleteUser: (userId: string) => void | Promise<void>;
+  onAddUser: (user: Omit<User, 'id'>) => User | Promise<User>;
   onLogout: () => void;
 }
 
@@ -47,32 +55,55 @@ export function AdminDashboard({
 }: AdminDashboardProps) {
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
-    role: 'child' as UserRole,
-    childId: ''
+    role: 'child' as UserRole
   });
 
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim()) return;
 
-    const userData: Omit<User, 'id'> = {
+    const userData: any = {
       name: newUser.name,
       email: newUser.email,
       role: newUser.role,
-      ...(newUser.role === 'parent' && newUser.childId ? { childId: newUser.childId } : {})
     };
 
-    onAddUser(userData);
-    setNewUser({ name: '', email: '', role: 'child', childId: '' });
-    setIsCreatingUser(false);
+    try {
+      await onAddUser(userData);
+      setNewUser({ name: '', email: '', role: 'child' });
+      setIsCreatingUser(false);
+    } catch (error) {
+      console.error('Error creating user:', error);
+    }
   };
 
-  const handleUpdateUser = () => {
+  const handleUpdateUser = async () => {
     if (!editingUser) return;
-    onUpdateUser(editingUser);
-    setEditingUser(null);
+    try {
+      await onUpdateUser(editingUser);
+      setEditingUser(null);
+    } catch (error) {
+      console.error('Error updating user:', error);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser || isDeleting) return; // Prevent double deletion
+    
+    setIsDeleting(true);
+    try {
+      await onDeleteUser(deletingUser.id);
+      setDeletingUser(null); // Close the dialog
+    } catch (error) {
+      console.error('Error deleting user:', error);
+    } finally {
+      setIsDeleting(false);
+      setDeletingUser(null); // Close the dialog
+    }
   };
 
   const getRoleIcon = (role: UserRole) => {
@@ -249,23 +280,13 @@ export function AdminDashboard({
                         </SelectContent>
                       </Select>
                     </div>
-                    {newUser.role === 'parent' && (
-                      <div className="space-y-2">
-                        <Label>Child</Label>
-                        <Select value={newUser.childId} onValueChange={(value) => setNewUser(prev => ({ ...prev, childId: value }))}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select child" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {children.map((child) => (
-                              <SelectItem key={child.id} value={child.id}>
-                                {child.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                      <p className="text-sm text-blue-800">
+                        📧 <strong>Email Notification:</strong> The user will receive an email with a temporary password. They must reset it on first login.
+                      </p>
+                    </div>
+
                     <div className="flex justify-end space-x-2 pt-4">
                       <Button variant="outline" onClick={() => setIsCreatingUser(false)}>
                         Cancel
@@ -324,7 +345,7 @@ export function AdminDashboard({
                                 variant="ghost"
                                 size="sm"
                                 className="text-red-500 hover:text-red-700"
-                                onClick={() => onDeleteUser(userData.id)}
+                                onClick={() => setDeletingUser(userData)}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
@@ -526,6 +547,61 @@ export function AdminDashboard({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <AlertDialog open={!!deletingUser} onOpenChange={() => setDeletingUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User - Permanent Action</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p className="font-semibold text-red-600">
+                  ⚠️ This action cannot be undone!
+                </p>
+                <p>
+                  You are about to permanently delete <span className="font-semibold">{deletingUser?.name}</span> ({deletingUser?.email}).
+                </p>
+                <p className="text-sm">
+                  This will delete:
+                </p>
+                <ul className="text-sm list-disc list-inside space-y-1 pl-2">
+                  <li>User profile and account</li>
+                  <li>All learning progress records</li>
+                  <li>All session history</li>
+                  <li>All module completions</li>
+                  <li>All analytics data</li>
+                  {deletingUser?.role === 'parent' && (
+                    <li className="text-red-600 font-semibold">All associated children and their data</li>
+                  )}
+                </ul>
+                <p className="font-semibold pt-2">
+                  Are you absolutely sure you want to continue?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-row justify-end gap-2 mt-4">
+            <AlertDialogCancel className="mt-0" disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              onClick={() => {
+                handleDeleteUser();
+              }}
+              disabled={isDeleting}
+              style={{ 
+                backgroundColor: '#dc2626', 
+                color: 'white',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? 'Deleting...' : 'Yes, Delete Permanently'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
