@@ -17,6 +17,7 @@ export interface Profile {
   name: string;
   role: 'admin' | 'parent' | 'educator' | 'child';
   child_id?: string;
+  first_login: boolean;
   created_at: string;
   updated_at: string;
 }

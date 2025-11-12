@@ -113,6 +113,7 @@ export async function createUser(userData: {
       email: userData.email,
       name: userData.name,
       role: userData.role,
+      first_login: true, // New users need to change password on first login
     })
     .select()
     .single();

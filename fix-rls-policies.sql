@@ -9,6 +9,7 @@ DROP POLICY IF EXISTS "Admins can view all profiles" ON profiles;
 DROP POLICY IF EXISTS "Admins can update all profiles" ON profiles;
 DROP POLICY IF EXISTS "Admins can insert profiles" ON profiles;
 DROP POLICY IF EXISTS "Admins can delete profiles" ON profiles;
+DROP POLICY IF EXISTS "Authenticated users can view profiles" ON profiles;
 DROP POLICY IF EXISTS "Admins can manage all children" ON children;
 DROP POLICY IF EXISTS "Admins can manage all modules" ON learning_modules;
 DROP POLICY IF EXISTS "Admins can manage all assignments" ON parent_educator_assignments;

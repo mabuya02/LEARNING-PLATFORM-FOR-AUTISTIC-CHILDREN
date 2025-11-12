@@ -28,13 +28,19 @@ export const authService = {
 
   // Sign in
   async signIn(email: string, password: string) {
+    console.log('🔑 authService.signIn START');
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    console.log('🔑 signInWithPassword result:', { hasUser: !!data.user, error: error?.message });
 
-    if (error) throw error;
+    if (error) {
+      console.error('🔑 Auth error:', error);
+      throw error;
+    }
 
+    console.log('🔑 Fetching profile for user:', data.user.id);
     // Get profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -42,8 +48,14 @@ export const authService = {
       .eq('id', data.user.id)
       .single();
 
-    if (profileError) throw profileError;
+    console.log('🔑 Profile fetch result:', { hasProfile: !!profile, error: profileError?.message });
 
+    if (profileError) {
+      console.error('🔑 Profile error:', profileError);
+      throw profileError;
+    }
+
+    console.log('🔑 authService.signIn END - success');
     return { user: data.user, profile };
   },
 

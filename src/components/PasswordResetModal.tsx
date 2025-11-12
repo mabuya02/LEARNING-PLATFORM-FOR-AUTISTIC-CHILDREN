@@ -15,7 +15,6 @@ interface PasswordResetModalProps {
 }
 
 export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: PasswordResetModalProps) {
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -45,18 +44,13 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
     setError(null);
 
     // Validation checks
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    if (!newPassword || !confirmPassword) {
       setError('All fields are required');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
-      return;
-    }
-
-    if (newPassword === currentPassword) {
-      setError('New password must be different from temporary password');
+      setError('Passwords do not match');
       return;
     }
 
@@ -69,19 +63,7 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
     setIsResetting(true);
 
     try {
-      // First, sign in with current (temporary) password to verify it's correct
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: userEmail,
-        password: currentPassword,
-      });
-
-      if (signInError) {
-        setError('Current password is incorrect');
-        setIsResetting(false);
-        return;
-      }
-
-      // Update the password
+      // Update the password directly (user is already authenticated via email confirmation)
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -90,21 +72,30 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
         throw updateError;
       }
 
-      // Update user metadata to remove temp_password flag
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: { temp_password: false },
-      });
-
-      if (metadataError) {
-        console.warn('Warning: Failed to update metadata:', metadataError);
+      // Get current user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not found');
       }
 
-      toast.success('Password updated successfully!', {
+      // Update first_login flag in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ first_login: false })
+        .eq('id', user.id);
+
+      if (profileError) {
+        console.warn('Warning: Failed to update first_login flag:', profileError);
+      } else {
+        console.log('✅ first_login flag updated to false');
+      }
+
+      toast.success('Password created successfully!', {
         description: 'You can now access the system with your new password.',
       });
 
       // Clear form
-      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
 
@@ -133,37 +124,25 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
         <DialogHeader>
           <div className="flex items-center gap-2 mb-2">
             <Lock className="h-6 w-6 text-orange-500" />
-            <DialogTitle className="text-xl">Password Reset Required</DialogTitle>
+            <DialogTitle className="text-xl">Welcome! Create Your Password</DialogTitle>
           </div>
           <DialogDescription className="text-base">
-            You're using a temporary password. Please create a new secure password to continue.
+            To secure your account, please create a strong password that you'll use for future logins.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Current Password */}
-          <div className="space-y-2">
-            <Label htmlFor="current-password">Current (Temporary) Password</Label>
-            <Input
-              id="current-password"
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="Enter temporary password"
-              disabled={isResetting}
-            />
-          </div>
-
           {/* New Password */}
           <div className="space-y-2">
-            <Label htmlFor="new-password">New Password</Label>
+            <Label htmlFor="new-password">Create Your Password</Label>
             <Input
               id="new-password"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter new password"
+              placeholder="Enter your new password"
               disabled={isResetting}
+              autoFocus
             />
             {strength && (
               <div className="flex items-center gap-2">
@@ -185,7 +164,7 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
 
           {/* Confirm Password */}
           <div className="space-y-2">
-            <Label htmlFor="confirm-password">Confirm New Password</Label>
+            <Label htmlFor="confirm-password">Confirm Password</Label>
             <Input
               id="confirm-password"
               type="password"
@@ -229,16 +208,16 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
         <div className="flex justify-end">
           <Button
             onClick={handlePasswordReset}
-            disabled={isResetting || !currentPassword || !newPassword || !confirmPassword}
+            disabled={isResetting || !newPassword || !confirmPassword}
             className="w-full sm:w-auto"
           >
-            {isResetting ? 'Resetting Password...' : 'Reset Password'}
+            {isResetting ? 'Creating Password...' : 'Create Password'}
           </Button>
         </div>
 
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-2">
-          <p className="text-sm text-yellow-800">
-            ⚠️ <strong>Important:</strong> You cannot access the system until you change your password.
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+          <p className="text-sm text-blue-800">
+            ℹ️ <strong>Note:</strong> You must create a password to access your account. This is a one-time setup.
           </p>
         </div>
       </DialogContent>

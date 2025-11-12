@@ -69,15 +69,47 @@ export default function App() {
   // Password reset state
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [tempPasswordEmail, setTempPasswordEmail] = useState<string>('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false); // Flag to prevent auth state change interference
 
   // Check for existing session on mount
   useEffect(() => {
     checkSession();
     
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('🔄 Auth state changed:', _event, 'Session exists:', !!session, 'isLoggingIn:', isLoggingIn);
+      
+      // Skip if we're in the middle of a login process
+      if (isLoggingIn) {
+        console.log('⏭️ Skipping auth state change - login in progress');
+        return;
+      }
+      
       if (session?.user) {
-        loadUserData(session.user.id);
+        // Only handle first_login for INITIAL_SESSION (email confirmation redirect)
+        // Not for SIGNED_IN during normal login
+        if (_event === 'INITIAL_SESSION' || _event === 'USER_UPDATED') {
+          const profile = await authService.getCurrentProfile();
+          console.log('👤 Profile loaded in auth state change:', profile);
+          
+          if (profile?.first_login === true) {
+            console.log('⚠️ First login detected in auth state change - showing password reset modal');
+            setTempPasswordEmail(profile.email);
+            setShowPasswordReset(true);
+            // Set minimal user state to allow modal to render
+            setUser({
+              id: profile.id,
+              name: profile.name,
+              email: profile.email,
+              role: profile.role,
+              childId: profile.child_id
+            });
+            setLoading(false);
+          } else if (_event === 'INITIAL_SESSION') {
+            // Normal session restoration
+            await loadUserData(session.user.id);
+          }
+        }
       } else {
         setUser(null);
         setUserProfile(null);
@@ -86,17 +118,47 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [isLoggingIn]);
 
   // Check for existing session
   const checkSession = async () => {
+    if (isLoggingIn) {
+      console.log('⏭️ Skipping checkSession - login in progress');
+      return;
+    }
+    
     try {
+      console.log('🔍 Checking existing session...');
       const session = await authService.getSession();
+      
       if (session?.user) {
-        await loadUserData(session.user.id);
+        console.log('✅ Session found for user:', session.user.id);
+        
+        // Get the user's profile to check first_login flag
+        const profile = await authService.getCurrentProfile();
+        console.log('👤 Profile loaded in checkSession:', profile);
+        
+        if (profile?.first_login === true) {
+          console.log('⚠️ First login detected in checkSession - showing password reset modal');
+          setTempPasswordEmail(profile.email);
+          setShowPasswordReset(true);
+          // Set minimal user state to allow modal to render
+          setUser({
+            id: profile.id,
+            name: profile.name,
+            email: profile.email,
+            role: profile.role,
+            childId: profile.child_id
+          });
+        } else {
+          console.log('✅ Not first login, loading full user data');
+          await loadUserData(session.user.id);
+        }
+      } else {
+        console.log('ℹ️ No session found');
       }
     } catch (error) {
-      console.error('Error checking session:', error);
+      console.error('❌ Error checking session:', error);
     } finally {
       setLoading(false);
     }
@@ -481,24 +543,31 @@ export default function App() {
   }, []);
 
   const handleLogin = async (credentials: UserCredentials): Promise<User | null> => {
+    console.log('🚀 handleLogin START - setting isLoggingIn to true');
+    setIsLoggingIn(true); // Prevent auth state change interference
     try {
       console.log('🔐 Attempting login with:', credentials.email);
       
-      // Sign in with Supabase
-      const { user: authUser, profile } = await authService.signIn(
-        credentials.email,
-        credentials.password
+      console.log('📞 Calling authService.signIn...');
+      
+      // Add timeout to detect if it's hanging
+      const signInPromise = authService.signIn(credentials.email, credentials.password);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login timeout - taking too long')), 10000)
       );
+      
+      const { user: authUser, profile } = await Promise.race([signInPromise, timeoutPromise]) as any;
+      
+      console.log('✅ authService.signIn completed', { authUser: authUser?.id, profile: profile?.id });
 
       console.log('✅ Auth successful, loading user data...', profile);
       
-      // Check if user has temporary password flag
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      console.log('🔍 Checking user metadata:', {
-        hasTempPasswordFlag: currentUser?.user_metadata?.temp_password,
-        userMetadata: currentUser?.user_metadata
+      // Check if this is user's first login
+      console.log('🔍 Checking first_login flag:', {
+        isFirstLogin: profile.first_login,
+        userId: profile.id
       });
-      const hasTempPassword = currentUser?.user_metadata?.temp_password === true;
+      const isFirstLogin = profile.first_login === true;
 
       // Create user object
       const userObj: User = {
@@ -508,24 +577,37 @@ export default function App() {
         role: profile.role,
         childId: profile.child_id
       };
+      console.log('👤 Created user object:', userObj);
 
-      if (hasTempPassword) {
-        console.log('⚠️ User has temporary password, showing reset modal');
+      if (isFirstLogin) {
+        console.log('⚠️ First login detected, showing password reset modal');
         setTempPasswordEmail(credentials.email);
         setShowPasswordReset(true);
         setUser(userObj); // Set user so modal can render properly
+        console.log('🏁 handleLogin END (first login) - setting isLoggingIn to false');
+        setIsLoggingIn(false);
         return userObj;
       } else {
-        console.log('✅ User does not have temp password flag, proceeding with normal login');
+        console.log('✅ Not first login, proceeding with normal login');
       }
       
+      console.log('📥 Calling loadUserData...');
       // Load user profile and data
       await loadUserData(authUser.id);
       
+      console.log('🏁 handleLogin END (normal login) - setting isLoggingIn to false');
       // Return the user object from profile
+      setIsLoggingIn(false);
       return userObj;
     } catch (error) {
       console.error('❌ Login error:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        error: error
+      });
+      console.log('🏁 handleLogin END (error) - setting isLoggingIn to false');
+      setIsLoggingIn(false);
       return null;
     }
   };
@@ -662,6 +744,7 @@ export default function App() {
   };
 
   if (!user) {
+    console.log('🎨 Rendering: No user - showing AuthScreen', { showPasswordReset, tempPasswordEmail });
     return (
       <>
         <AuthScreen onLogin={handleLogin} mockCredentials={mockCredentials} />
@@ -677,6 +760,7 @@ export default function App() {
 
   // If user is logged in but needs to reset password, show modal and block dashboard
   if (showPasswordReset) {
+    console.log('🔒 Rendering: Password reset modal (blocking dashboard)', { user: user.email, showPasswordReset });
     return (
       <>
         <PasswordResetModal
@@ -688,6 +772,8 @@ export default function App() {
       </>
     );
   }
+
+  console.log('🏠 Rendering: Dashboard for user', user.role, user.email);
 
   switch (user.role) {
     case 'admin':
