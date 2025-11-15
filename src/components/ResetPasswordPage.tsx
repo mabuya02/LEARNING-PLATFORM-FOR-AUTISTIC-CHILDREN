@@ -1,26 +1,37 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-import { Label } from './ui/label';
-import { Input } from './ui/input';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
 import { AlertCircle, CheckCircle2, Lock, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 
-interface PasswordResetModalProps {
-  isOpen: boolean;
-  userEmail: string;
-  onPasswordChanged: () => void;
+interface ResetPasswordPageProps {
+  onPasswordReset: () => void;
 }
 
-export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: PasswordResetModalProps) {
+export function ResetPasswordPage({ onPasswordReset }: ResetPasswordPageProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isValidToken, setIsValidToken] = useState(true);
+
+  useEffect(() => {
+    // Check if we have a valid session (user clicked the reset link)
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setIsValidToken(false);
+        setError('Invalid or expired reset link. Please request a new password reset.');
+      }
+    };
+    checkSession();
+  }, []);
 
   // Password validation
   const validatePassword = (password: string): { valid: boolean; message?: string } => {
@@ -43,134 +54,70 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
   };
 
   const handlePasswordReset = async () => {
-    console.log('🔐 handlePasswordReset START');
     setError(null);
 
     // Validation checks
     if (!newPassword || !confirmPassword) {
-      console.log('❌ Validation failed: Fields are empty');
       setError('All fields are required');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      console.log('❌ Validation failed: Passwords do not match');
       setError('Passwords do not match');
       return;
     }
 
     const passwordValidation = validatePassword(newPassword);
     if (!passwordValidation.valid) {
-      console.log('❌ Validation failed:', passwordValidation.message);
       setError(passwordValidation.message || 'Invalid password');
       return;
     }
 
-    console.log('✅ All validations passed, updating password...');
     setIsResetting(true);
 
     try {
-      // Get current user ID first
-      console.log('👤 Getting current user...');
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        console.log('❌ User not found');
-        throw new Error('User not found');
-      }
-      console.log('✅ User found:', user.id);
-
-      // Update the password (user is already authenticated via email confirmation)
-      console.log('📝 Calling supabase.auth.updateUser...');
-      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+      // Update the password
+      const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (updateError) {
-        console.log('❌ Password update failed:', updateError);
-        
-        // If error is "password must be different", it means they already have a password
-        // Just update the first_login flag and let them in
-        if (updateError.message.includes('should be different') || updateError.message.includes('same as')) {
-          console.log('⚠️ User already has this password set. Updating first_login flag only...');
-          
-          // Update first_login flag in profiles table
-          console.log('📝 Updating first_login flag to false...');
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .update({ first_login: false })
-            .eq('id', user.id);
-
-          if (profileError) {
-            console.error('❌ Failed to update first_login flag:', profileError);
-            throw new Error('Failed to update profile. Please contact support.');
-          }
-          
-          console.log('✅ first_login flag updated to false');
-          toast.success('Account verified!', {
-            description: 'Welcome back! Redirecting to your dashboard...',
-          });
-
-          // Clear form
-          setNewPassword('');
-          setConfirmPassword('');
-
-          // Notify parent component
-          console.log('📢 Calling onPasswordChanged callback');
-          onPasswordChanged();
-          console.log('🏁 handlePasswordReset END - BYPASSED (existing password)');
-          return;
-        }
-        
-        // For other errors, throw to be caught below
         throw updateError;
       }
-      console.log('✅ Password updated successfully', { userId: updateData?.user?.id });
 
-      // Update first_login flag in profiles table
-      console.log('📝 Updating first_login flag to false...');
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ first_login: false })
-        .eq('id', user.id);
-
-      if (profileError) {
-        console.warn('⚠️ Warning: Failed to update first_login flag:', profileError);
-        // Don't throw here, password was updated successfully
-        toast.warning('Password updated but profile update failed', {
-          description: 'You may need to change your password again on next login.',
-        });
-      } else {
-        console.log('✅ first_login flag updated to false');
-      }
-
-      // Refresh the session to ensure everything is synced
-      console.log('🔄 Refreshing session...');
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        console.warn('⚠️ Session refresh failed:', refreshError);
-      }
-
-      console.log('🎉 Showing success toast');
-      toast.success('Password created successfully!', {
-        description: 'You can now access the system with your new password.',
+      console.log('✅ Password updated successfully');
+      
+      toast.success('Password reset successfully!', {
+        description: 'Redirecting to login...',
       });
 
       // Clear form
       setNewPassword('');
       setConfirmPassword('');
 
-      // Notify parent component
-      console.log('📢 Calling onPasswordChanged callback');
-      onPasswordChanged();
-      console.log('🏁 handlePasswordReset END - SUCCESS');
+      // Sign out to clear the session and redirect to login
+      await supabase.auth.signOut();
+
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        onPasswordReset();
+      }, 1500);
     } catch (error: any) {
-      console.error('❌ Error resetting password:', error);
-      const errorMessage = error.message || 'Failed to reset password. Please try again.';
-      setError(errorMessage);
-      toast.error('Password reset failed', {
-        description: errorMessage,
-      });
+      console.error('Error resetting password:', error);
+      
+      // Handle specific error for same password
+      if (error.message?.includes('should be different') || error.message?.includes('same as')) {
+        setError('New password must be different from your current password');
+        toast.error('Password unchanged', {
+          description: 'Please choose a different password.',
+        });
+      } else {
+        const errorMessage = error.message || 'Failed to reset password. Please try again.';
+        setError(errorMessage);
+        toast.error('Password reset failed', {
+          description: errorMessage,
+        });
+      }
     } finally {
       setIsResetting(false);
     }
@@ -185,23 +132,49 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
 
   const strength = newPassword ? passwordStrength(newPassword) : null;
 
-  return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[500px]" onInteractOutside={(e) => e.preventDefault()}>
-        <DialogHeader>
-          <div className="flex items-center gap-2 mb-2">
-            <Lock className="h-6 w-6 text-orange-500" />
-            <DialogTitle className="text-xl">Welcome! Create Your Password</DialogTitle>
-          </div>
-          <DialogDescription className="text-base">
-            To secure your account, please create a strong password that you'll use for future logins.
-          </DialogDescription>
-        </DialogHeader>
+  if (!isValidToken) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-16 h-16 bg-red-500 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl text-red-600">Invalid Reset Link</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                This password reset link is invalid or has expired. Please request a new password reset from the login page.
+              </AlertDescription>
+            </Alert>
+            <Button onClick={onPasswordReset} className="w-full">
+              Back to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-        <div className="space-y-4 py-4">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+            <Lock className="w-8 h-8 text-white" />
+          </div>
+          <CardTitle className="text-2xl">Reset Your Password</CardTitle>
+          <p className="text-muted-foreground mt-2">
+            Create a new strong password for your account
+          </p>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
           {/* New Password */}
           <div className="space-y-2">
-            <Label htmlFor="new-password">Create Your Password</Label>
+            <Label htmlFor="new-password">New Password</Label>
             <div className="relative">
               <Input
                 id="new-password"
@@ -291,25 +264,27 @@ export function PasswordResetModal({ isOpen, userEmail, onPasswordChanged }: Pas
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-        </div>
 
-        {/* Action Button */}
-        <div className="flex justify-end">
-          <Button
-            onClick={handlePasswordReset}
-            disabled={isResetting || !newPassword || !confirmPassword}
-            className="w-full sm:w-auto"
-          >
-            {isResetting ? 'Creating Password...' : 'Create Password'}
-          </Button>
-        </div>
-
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
-          <p className="text-sm text-blue-800">
-            ℹ️ <strong>Note:</strong> You must create a password to access your account. This is a one-time setup.
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
+          {/* Action Buttons */}
+          <div className="space-y-2">
+            <Button
+              onClick={handlePasswordReset}
+              disabled={isResetting || !newPassword || !confirmPassword}
+              className="w-full"
+            >
+              {isResetting ? 'Resetting Password...' : 'Reset Password'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onPasswordReset}
+              disabled={isResetting}
+              className="w-full"
+            >
+              Back to Login
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { ParentDashboard } from './components/ParentDashboard';
 import { ChildInterface } from './components/ChildInterface';
 import { AdminDashboard } from './components/AdminDashboard';
 import { PasswordResetModal } from './components/PasswordResetModal';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { supabase } from './lib/supabase';
@@ -40,6 +41,7 @@ export interface LearningModule {
   content: any;
   createdBy: string;
   ageGroup: string;
+  videoUrl?: string; // Optional video URL for the module
 }
 
 export interface ProgressData {
@@ -70,6 +72,7 @@ export default function App() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [tempPasswordEmail, setTempPasswordEmail] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState(false); // Flag to prevent auth state change interference
+  const [showResetPasswordPage, setShowResetPasswordPage] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -78,6 +81,20 @@ export default function App() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('🔄 Auth state changed:', _event, 'Session exists:', !!session, 'isLoggingIn:', isLoggingIn);
+      
+      // Handle password recovery event (from email reset link)
+      if (_event === 'PASSWORD_RECOVERY') {
+        console.log('🔑 Password recovery detected - showing reset password page');
+        setShowResetPasswordPage(true);
+        setLoading(false);
+        return;
+      }
+
+      // If we're showing reset password page, ignore other auth events
+      if (showResetPasswordPage) {
+        console.log('⏭️ Skipping auth state change - reset password page is active');
+        return;
+      }
       
       // Skip if we're in the middle of a login process
       if (isLoggingIn) {
@@ -122,8 +139,8 @@ export default function App() {
 
   // Check for existing session
   const checkSession = async () => {
-    if (isLoggingIn) {
-      console.log('⏭️ Skipping checkSession - login in progress');
+    if (isLoggingIn || showResetPasswordPage) {
+      console.log('⏭️ Skipping checkSession - login in progress or reset password page active');
       return;
     }
     
@@ -185,19 +202,11 @@ export default function App() {
 
         // Load modules
         const modules = await moduleService.getModules();
-        const mappedModules = modules.map(m => ({
-          id: m.id,
-          title: m.title,
-          description: m.description || '',
-          type: m.type as any,
-          difficulty: m.difficulty,
-          duration: 10,
-          content: {},
-          createdBy: userId,
-          ageGroup: '3-10'
-        }));
-        setLearningModules(mappedModules);
-        console.log('📚 Loaded modules:', mappedModules.length);
+        setLearningModules(modules);
+        console.log('📚 Loaded modules:', modules.length);
+        if (modules.length > 0) {
+          console.log('🎬 Sample module with video:', modules.find(m => m.videoUrl));
+        }
 
         // Load admin-specific data
         if (profile.role === 'admin') {
@@ -703,12 +712,55 @@ export default function App() {
     }
   };
 
-  const addLearningModule = (module: Omit<LearningModule, 'id'>) => {
-    const newModule: LearningModule = {
-      ...module,
-      id: Date.now().toString()
-    };
-    setLearningModules(prev => [...prev, newModule]);
+  const addLearningModule = async (module: Omit<LearningModule, 'id'>) => {
+    try {
+      console.log('🎯 Creating module with video URL:', module.videoUrl);
+      const newModule = await moduleService.createModule(module);
+      console.log('✅ Module created:', newModule);
+      setLearningModules(prev => [...prev, newModule]);
+      return newModule;
+    } catch (error) {
+      console.error('❌ Error creating module:', error);
+      toast.error('Failed to create module', {
+        description: 'Please try again or contact support.'
+      });
+      throw error;
+    }
+  };
+
+  const updateLearningModule = async (id: string, updates: Partial<LearningModule>) => {
+    try {
+      console.log('📝 Updating module', id, 'with:', updates);
+      const updatedModule = await moduleService.updateModule(id, updates);
+      console.log('✅ Module updated:', updatedModule);
+      setLearningModules(prev => 
+        prev.map(module => 
+          module.id === id ? updatedModule : module
+        )
+      );
+      return updatedModule;
+    } catch (error) {
+      console.error('❌ Error updating module:', error);
+      toast.error('Failed to update module', {
+        description: 'Please try again or contact support.'
+      });
+      throw error;
+    }
+  };
+
+  const deleteLearningModule = async (id: string) => {
+    try {
+      console.log('🗑️ Deleting module:', id);
+      await moduleService.deleteModule(id);
+      console.log('✅ Module deleted');
+      setLearningModules(prev => prev.filter(module => module.id !== id));
+    } catch (error) {
+      console.error('❌ Error deleting module:', error);
+      toast.error('Failed to delete module', {
+        description: 'Please try again or contact support.'
+      });
+      throw error;
+    }
   };
 
   const addProgressData = (progress: Omit<ProgressData, 'endTime'>) => {
@@ -723,25 +775,57 @@ export default function App() {
     // After password is changed, complete the login process
     console.log('🔄 Password changed, completing login...');
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('❌ Error getting current user:', userError);
+        throw userError;
+      }
+      
       console.log('👤 Current user after password change:', {
         id: currentUser?.id,
-        email: currentUser?.email,
-        tempPasswordFlag: currentUser?.user_metadata?.temp_password
+        email: currentUser?.email
       });
       
       if (currentUser) {
+        console.log('📥 Loading user data...');
         await loadUserData(currentUser.id);
         setShowPasswordReset(false);
         setTempPasswordEmail('');
         console.log('✅ Login completed successfully after password reset');
+        toast.success('Welcome!', {
+          description: 'You can now access your dashboard.',
+        });
+      } else {
+        console.error('❌ No current user found after password change');
+        throw new Error('Session not found. Please log in again.');
       }
     } catch (error) {
       console.error('❌ Error completing login after password reset:', error);
-      toast.error('Please log in again with your new password');
+      toast.error('Session expired', {
+        description: 'Please log in again with your new password.',
+      });
       await handleLogout();
     }
   };
+
+  const handleResetPasswordComplete = async () => {
+    // After password reset from email link, redirect to login
+    console.log('🔄 Password reset complete, redirecting to login...');
+    setShowResetPasswordPage(false);
+    await handleLogout();
+  };
+
+  // Show reset password page if user came from email link
+  if (showResetPasswordPage) {
+    console.log('🔑 Rendering: Reset Password Page (from email link)');
+    return (
+      <>
+        <ResetPasswordPage onPasswordReset={handleResetPasswordComplete} />
+        <Toaster position="top-right" richColors />
+      </>
+    );
+  }
 
   if (!user) {
     console.log('🎨 Rendering: No user - showing AuthScreen', { showPasswordReset, tempPasswordEmail });
@@ -797,7 +881,10 @@ export default function App() {
         <EducatorDashboard
           user={user}
           modules={learningModules}
+          progressData={progressData}
           onAddModule={addLearningModule}
+          onUpdateModule={updateLearningModule}
+          onDeleteModule={deleteLearningModule}
           onLogout={handleLogout}
         />
       );

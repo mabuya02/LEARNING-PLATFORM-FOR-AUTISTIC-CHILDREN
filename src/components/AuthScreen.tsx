@@ -5,8 +5,11 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Alert, AlertDescription } from './ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { User, UserRole, UserCredentials } from '../App';
-import { BookOpen, Heart, Star, Shield, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { BookOpen, Heart, Star, Shield, Eye, EyeOff, AlertCircle, Mail, CheckCircle2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { toast } from 'sonner';
 
 interface AuthScreenProps {
   onLogin: (credentials: UserCredentials) => Promise<User | null>;
@@ -21,6 +24,10 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -67,6 +74,40 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!resetEmail.trim()) {
+      toast.error('Please enter your email address');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: window.location.origin,
+      });
+
+      if (error) throw error;
+
+      setResetSuccess(true);
+      toast.success('Password reset email sent!', {
+        description: 'Check your inbox for the reset link.',
+      });
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      toast.error('Failed to send reset email', {
+        description: error.message || 'Please try again or contact support.',
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleCloseForgotPassword = () => {
+    setShowForgotPassword(false);
+    setResetEmail('');
+    setResetSuccess(false);
   };
 
   const getRoleIcon = (roleType: UserRole) => {
@@ -131,7 +172,17 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                disabled={isLoading}
+              >
+                Forgot Password?
+              </button>
+            </div>
             <div className="relative">
               <Input
                 id="password"
@@ -242,6 +293,76 @@ export function AuthScreen({ onLogin, mockCredentials }: AuthScreenProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Forgot Password Dialog */}
+      <Dialog open={showForgotPassword} onOpenChange={handleCloseForgotPassword}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2 mb-2">
+              <Mail className="h-5 w-5 text-blue-500" />
+              <DialogTitle>Reset Your Password</DialogTitle>
+            </div>
+            <DialogDescription>
+              {resetSuccess
+                ? "We've sent you a password reset link!"
+                : "Enter your email address and we'll send you a link to reset your password."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!resetSuccess ? (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email Address</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={isResetting}
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleCloseForgotPassword}
+                  disabled={isResetting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handlePasswordReset}
+                  disabled={isResetting || !resetEmail.trim()}
+                >
+                  {isResetting ? 'Sending...' : 'Send Reset Link'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-4">
+              <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-green-900">
+                    Email sent to {resetEmail}
+                  </p>
+                  <p className="text-xs text-green-700">
+                    Check your inbox and click the link to reset your password. The link will expire in 1 hour.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={handleCloseForgotPassword}
+                className="w-full mt-4"
+              >
+                Close
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

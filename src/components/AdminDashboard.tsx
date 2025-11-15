@@ -142,10 +142,23 @@ export function AdminDashboard({
   };
 
   const getEngagementStats = () => {
+    if (!allProgress || allProgress.length === 0) {
+      return { totalSessions: 0, highEngagement: 0, avgCompletionRate: 0 };
+    }
+
     const totalSessions = allProgress.length;
-    const highEngagement = allProgress.filter(p => p.engagementLevel === 'high').length;
-    const avgCompletionRate = allProgress.reduce((sum, p) => sum + p.completionRate, 0) / totalSessions || 0;
-    return { totalSessions, highEngagement, avgCompletionRate: Math.round(avgCompletionRate) };
+    
+    // Check different possible property names for engagement level
+    const highEngagement = allProgress.filter(p => {
+      const engagementLevel = p.engagementLevel || p.engagement_level;
+      return engagementLevel === 'high';
+    }).length;
+    
+    // Calculate completion rate from scores (score >= 70 is considered complete)
+    const completedSessions = allProgress.filter(p => (p.score || 0) >= 70).length;
+    const avgCompletionRate = Math.round((completedSessions / totalSessions) * 100);
+    
+    return { totalSessions, highEngagement, avgCompletionRate };
   };
 
   const userStats = getUserStats();

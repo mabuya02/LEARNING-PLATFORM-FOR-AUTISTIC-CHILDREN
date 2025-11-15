@@ -37,12 +37,13 @@ export interface LearningModule {
   id: string;
   title: string;
   description: string;
-  type: 'colors' | 'numbers' | 'shapes' | 'animals' | 'sizes';
+  type: 'visual' | 'audio' | 'interactive' | 'game';
   difficulty: 'easy' | 'medium' | 'hard';
-  icon: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  duration: number; // in minutes
+  content: any;
+  createdBy: string;
+  ageGroup: string;
+  videoUrl?: string;
 }
 
 export interface Progress {
