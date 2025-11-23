@@ -23,6 +23,7 @@ export interface User {
   email: string;
   role: UserRole;
   childId?: string; // For parents, links to their child
+  educatorId?: string; // For children, links to their educator
 }
 
 export interface UserCredentials {
@@ -47,6 +48,7 @@ export interface LearningModule {
 export interface ProgressData {
   moduleId: string;
   childId: string;
+  moduleName?: string;
   startTime: Date;
   endTime?: Date;
   attentionSpan: number; // in seconds
@@ -251,6 +253,7 @@ export default function App() {
           const mappedAllProgress = allProgressData.map((p: any) => ({
             moduleId: p.module_id,
             childId: p.child_id,
+            moduleName: p.module_name,
             startTime: new Date(p.created_at),
             endTime: new Date(p.completed_at),
             attentionSpan: p.time_spent,
@@ -270,13 +273,60 @@ export default function App() {
             : await childService.getChildrenByEducator(profile.id);
           setChildren(childrenData);
           console.log('✅ Loaded children:', childrenData.length);
+          
+          // For parents, update the user object with the first child's ID
+          if (profile.role === 'parent' && childrenData.length > 0) {
+            const updatedUserObj = {
+              ...userObj,
+              childId: childrenData[0].id
+            };
+            setUser(updatedUserObj);
+            console.log('✅ Updated parent user with childId:', childrenData[0].id);
+          }
 
-          // Load progress for first child
+          // Load progress for ALL children (not just the first one)
           if (childrenData.length > 0) {
-            const progress = await progressService.getProgressByChild(childrenData[0].id);
+            const allProgress: ProgressData[] = [];
+            
+            // Fetch progress for each child
+            for (const child of childrenData) {
+              try {
+                const progress = await progressService.getProgressByChild(child.id);
+                const mappedProgress = progress.map(p => ({
+                  moduleId: p.module_id,
+                  childId: p.child_id,
+                  moduleName: p.module_name,
+                  startTime: new Date(p.created_at),
+                  endTime: new Date(p.completed_at),
+                  attentionSpan: p.time_spent,
+                  completionRate: (p.correct_answers / p.total_questions) * 100 || 0,
+                  correctAnswers: p.correct_answers,
+                  totalQuestions: p.total_questions,
+                  engagementLevel: p.score > 80 ? 'high' : p.score > 50 ? 'medium' : 'low'
+                } as ProgressData));
+                allProgress.push(...mappedProgress);
+              } catch (error) {
+                console.error(`❌ Error loading progress for child ${child.id}:`, error);
+              }
+            }
+            
+            setProgressData(allProgress);
+            console.log('✅ Loaded progress data for all children:', allProgress.length);
+          }
+        }
+        // Child user - load their progress data
+        else if (profile.role === 'child') {
+          console.log('👶 Child user logged in - loading progress data...');
+          try {
+            // For child users, we need to find their child record to get progress
+            // The user.id is the auth user ID, but progress is linked to child_id
+            const childId = profile.child_id || profile.id; // Use child_id if available, otherwise use user ID as fallback
+            
+            const progress = await progressService.getProgressByChild(childId);
             const mappedProgress = progress.map(p => ({
               moduleId: p.module_id,
               childId: p.child_id,
+              moduleName: p.module_name,
               startTime: new Date(p.created_at),
               endTime: new Date(p.completed_at),
               attentionSpan: p.time_spent,
@@ -286,12 +336,11 @@ export default function App() {
               engagementLevel: p.score > 80 ? 'high' : p.score > 50 ? 'medium' : 'low'
             } as ProgressData));
             setProgressData(mappedProgress);
-            console.log('✅ Loaded progress data:', mappedProgress.length);
+            console.log('✅ Loaded child progress data:', mappedProgress.length);
+          } catch (error) {
+            console.error('❌ Error loading child progress:', error);
+            // Continue without progress data - not critical
           }
-        }
-        // Child user - no additional data needed beyond modules
-        else if (profile.role === 'child') {
-          console.log('👶 Child user logged in - basic setup complete');
         }
         
         console.log('🎉 User data loading complete!');
@@ -708,6 +757,8 @@ export default function App() {
           user={user}
           progressData={progressData.filter(p => p.childId === user.childId)}
           modules={learningModules}
+          children={children}
+          allUsers={allUsers}
           onLogout={handleLogout}
         />
       );
@@ -716,6 +767,7 @@ export default function App() {
         <ChildInterface
           user={user}
           modules={learningModules}
+          progressData={progressData}
           onProgress={addProgressData}
           onLogout={handleLogout}
         />

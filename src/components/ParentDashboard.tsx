@@ -5,17 +5,29 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { User, ProgressData, LearningModule } from '../App';
-import { Heart, Clock, Target, TrendingUp, LogOut, Calendar, Award, Eye } from 'lucide-react';
+import { Heart, Clock, Target, TrendingUp, LogOut, Calendar, Award, Eye, Baby, AlertCircle } from 'lucide-react';
+import { Child } from '../lib/supabase';
 
 interface ParentDashboardProps {
   user: User;
   progressData: ProgressData[];
   modules: LearningModule[];
+  children: Child[];
+  allUsers: User[];
   onLogout: () => void;
 }
 
-export function ParentDashboard({ user, progressData, modules, onLogout }: ParentDashboardProps) {
+export function ParentDashboard({ user, progressData, modules, children, allUsers, onLogout }: ParentDashboardProps) {
   const getModuleById = (id: string) => modules.find(m => m.id === id);
+  
+  // Get the linked child (parent should have only one child linked via childId)
+  const linkedChild = children.find(c => c.id === user.childId);
+  const hasLinkedChild = !!linkedChild;
+  
+  // Get the child's educator if available
+  const childEducator = linkedChild && linkedChild.educator_id 
+    ? allUsers.find(u => u.id === linkedChild.educator_id)
+    : null;
   
   const totalSessions = progressData.length;
   const avgAttentionSpan = progressData.length > 0 
@@ -96,7 +108,12 @@ export function ParentDashboard({ user, progressData, modules, onLogout }: Paren
               </div>
               <div>
                 <h1 className="text-xl">Parent Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Tracking your child's learning journey</p>
+                <p className="text-sm text-muted-foreground">
+                  {hasLinkedChild 
+                    ? `Tracking ${linkedChild.name}'s learning journey`
+                    : 'Tracking your child\'s learning journey'
+                  }
+                </p>
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={onLogout}>
@@ -108,6 +125,55 @@ export function ParentDashboard({ user, progressData, modules, onLogout }: Paren
       </header>
 
       <div className="p-4 space-y-6">
+        {/* Child Info Card */}
+        {hasLinkedChild ? (
+          <Card className="bg-gradient-to-r from-green-50 to-blue-50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                    <Baby className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Monitoring</p>
+                    <h2 className="text-2xl font-semibold">{linkedChild.name}</h2>
+                    <div className="flex items-center space-x-3 mt-1">
+                      <p className="text-sm text-muted-foreground">Age: {linkedChild.age} years</p>
+                      {childEducator && (
+                        <>
+                          <span className="text-muted-foreground">•</span>
+                          <p className="text-sm text-muted-foreground">
+                            Educator: {childEducator.name}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Badge className="bg-green-100 text-green-800">
+                    Active Learner
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-yellow-50 border-yellow-200">
+            <CardContent className="p-4">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-yellow-900">No Child Linked</h3>
+                  <p className="text-sm text-yellow-800 mt-1">
+                    Your account is not yet linked to a child. Please contact your administrator to link your account to your child's profile.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -190,6 +256,20 @@ export function ParentDashboard({ user, progressData, modules, onLogout }: Paren
                 <CardTitle>Recent Learning Sessions</CardTitle>
               </CardHeader>
               <CardContent>
+                {progressData.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-muted-foreground">
+                      {hasLinkedChild 
+                        ? `No learning sessions recorded yet for ${linkedChild.name}.`
+                        : 'No learning sessions recorded yet.'
+                      }
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Sessions will appear here once your child starts learning.
+                    </p>
+                  </div>
+                ) : (
                 <div className="space-y-4">
                   {progressData.slice(-5).reverse().map((progress) => {
                     const module = getModuleById(progress.moduleId);
@@ -245,6 +325,7 @@ export function ParentDashboard({ user, progressData, modules, onLogout }: Paren
                     );
                   })}
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

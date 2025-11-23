@@ -42,9 +42,16 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     content: {}
   });
 
+  // Debug logging
+  console.log('🎓 EducatorDashboard - Progress Data:', progressData);
+  console.log('🎓 EducatorDashboard - Modules:', modules);
+
   // Calculate analytics from progress data
   const calculateAnalytics = () => {
+    console.log('📊 Calculating analytics from progress data:', progressData);
     if (!progressData || progressData.length === 0) {
+      console.log('⚠️ No progress data available for analytics');
+
       return {
         mostPopularModule: { name: 'No data', completionRate: 0 },
         avgAttentionSpan: 0,
@@ -105,6 +112,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
   // Calculate stats for cards
   const getStatsForCards = () => {
     if (!progressData || progressData.length === 0) {
+      console.log('⚠️ No progress data for stats cards');
       return {
         activeLearners: 0,
         hoursLearned: 0
@@ -120,12 +128,14 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
       }
     });
 
-    // Calculate total hours from time_spent (assuming it's in seconds)
+    // Calculate total hours from attentionSpan (in seconds)
     const totalSeconds = progressData.reduce((sum: number, p: any) => {
-      const timeSpent = p.timeSpent || p.time_spent || 0;
+      const timeSpent = p.attentionSpan || p.time_spent || 0;
       return sum + timeSpent;
     }, 0);
     const hoursLearned = Math.round(totalSeconds / 3600); // Convert to hours
+
+    console.log('📊 Stats - Active Learners:', uniqueLearners.size, 'Hours:', hoursLearned);
 
     return {
       activeLearners: uniqueLearners.size,
@@ -988,10 +998,28 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                 <CardTitle>Learning Analytics</CardTitle>
               </CardHeader>
               <CardContent>
-                {analytics.totalSessions === 0 ? (
+                {statsCards.activeLearners === 0 ? (
+                  <div className="text-center py-12 px-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                      <Users className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold mb-2">No Students Assigned</h3>
+                    <p className="text-gray-600 mb-4 max-w-md mx-auto">
+                      You don't have any children assigned to you yet. Analytics will appear once children are assigned and complete modules.
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-lg mx-auto text-left">
+                      <p className="text-sm font-semibold text-blue-900 mb-2">💡 To get started:</p>
+                      <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                        <li>Contact your administrator to assign children to your account</li>
+                        <li>Or run the SQL script: <code className="bg-blue-100 px-1 rounded">supabase/SQL/assign-children-to-educator.sql</code></li>
+                        <li>Children need to be linked via the <code className="bg-blue-100 px-1 rounded">educator_id</code> field</li>
+                      </ol>
+                    </div>
+                  </div>
+                ) : analytics.totalSessions === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <p className="text-lg mb-2">No analytics data available yet</p>
-                    <p className="text-sm">Data will appear once students complete modules</p>
+                    <p className="text-lg mb-2">No activity data yet</p>
+                    <p className="text-sm">You have {statsCards.activeLearners} student(s) assigned, but no completed modules yet</p>
                   </div>
                 ) : (
                   <div className="space-y-4">

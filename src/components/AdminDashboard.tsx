@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { childService } from '../services/childService';
 import { 
   AlertDialog, 
   AlertDialogCancel, 
@@ -60,21 +61,39 @@ export function AdminDashboard({
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
-    role: 'child' as UserRole
+    role: 'child' as UserRole,
+    educatorId: '',
+    childId: undefined as string | undefined
   });
 
   const handleCreateUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim()) return;
+    
+    // Validate educator assignment for children
+    if (newUser.role === 'child' && !newUser.educatorId.trim()) {
+      alert('Please assign an educator for this child');
+      return;
+    }
 
     const userData: any = {
       name: newUser.name,
       email: newUser.email,
       role: newUser.role,
     };
+    
+    // Add educatorId if creating a child
+    if (newUser.role === 'child') {
+      userData.educatorId = newUser.educatorId;
+    }
+    
+    // Add childId if creating a parent
+    if (newUser.role === 'parent' && newUser.childId) {
+      userData.childId = newUser.childId;
+    }
 
     try {
       await onAddUser(userData);
-      setNewUser({ name: '', email: '', role: 'child' });
+      setNewUser({ name: '', email: '', role: 'child', educatorId: '', childId: undefined });
       setIsCreatingUser(false);
     } catch (error) {
       console.error('Error creating user:', error);
@@ -83,11 +102,37 @@ export function AdminDashboard({
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
+    
+    // Validate educator assignment for children
+    if (editingUser.role === 'child' && !editingUser.educatorId) {
+      alert('Please assign an educator for this child');
+      return;
+    }
+    
     try {
       await onUpdateUser(editingUser);
       setEditingUser(null);
     } catch (error) {
       console.error('Error updating user:', error);
+    }
+  };
+
+  const handleEditUser = async (userData: User) => {
+    // If editing a child, fetch their educator_id from the children table
+    if (userData.role === 'child') {
+      try {
+        const childRecord = await childService.getChildById(userData.id);
+        if (childRecord) {
+          setEditingUser({ ...userData, educatorId: childRecord.educator_id });
+        } else {
+          setEditingUser(userData);
+        }
+      } catch (error) {
+        console.error('Error fetching child educator:', error);
+        setEditingUser(userData);
+      }
+    } else {
+      setEditingUser(userData);
     }
   };
 
@@ -294,6 +339,55 @@ export function AdminDashboard({
                       </Select>
                     </div>
 
+                    {newUser.role === 'child' && (
+                      <div className="space-y-2">
+                        <Label>Assign Educator <span className="text-red-500">*</span></Label>
+                        <Select 
+                          value={newUser.educatorId} 
+                          onValueChange={(value) => setNewUser(prev => ({ ...prev, educatorId: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select an educator" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allUsers.filter(u => u.role === 'educator').map(educator => (
+                              <SelectItem key={educator.id} value={educator.id}>
+                                {educator.name} ({educator.email})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Every child must be assigned to an educator who will monitor their progress.
+                        </p>
+                      </div>
+                    )}
+
+                    {newUser.role === 'parent' && (
+                      <div className="space-y-2">
+                        <Label>Link to Child (Optional)</Label>
+                        <Select 
+                          value={newUser.childId || ''} 
+                          onValueChange={(value) => setNewUser(prev => ({ ...prev, childId: value || undefined }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a child to link" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">No child linked</SelectItem>
+                            {children.map(child => (
+                              <SelectItem key={child.id} value={child.id}>
+                                {child.name} (Age: {child.age})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Link this parent account to a child to grant them access to the child's progress data.
+                        </p>
+                      </div>
+                    )}
+
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
                       <p className="text-sm text-blue-800">
                         📧 <strong>Email Notification:</strong> The user will receive an email with a temporary password. They must reset it on first login.
@@ -349,7 +443,7 @@ export function AdminDashboard({
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => setEditingUser(userData)}
+                              onClick={() => handleEditUser(userData)}
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
@@ -528,24 +622,51 @@ export function AdminDashboard({
                   </SelectContent>
                 </Select>
               </div>
-              {editingUser.role === 'parent' && (
+              {editingUser.role === 'child' && (
                 <div className="space-y-2">
-                  <Label>Child</Label>
+                  <Label>Assigned Educator <span className="text-red-500">*</span></Label>
                   <Select 
-                    value={editingUser.childId || ''} 
-                    onValueChange={(value) => setEditingUser(prev => prev ? { ...prev, childId: value } : null)}
+                    value={editingUser.educatorId || ''} 
+                    onValueChange={(value) => setEditingUser(prev => prev ? { ...prev, educatorId: value } : null)}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select child" />
+                      <SelectValue placeholder="Select an educator" />
                     </SelectTrigger>
                     <SelectContent>
-                      {children.map((child) => (
-                        <SelectItem key={child.id} value={child.id}>
-                          {child.name}
+                      {allUsers.filter(u => u.role === 'educator').map(educator => (
+                        <SelectItem key={educator.id} value={educator.id}>
+                          {educator.name} ({educator.email})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Every child must be assigned to an educator.
+                  </p>
+                </div>
+              )}
+              {editingUser.role === 'parent' && (
+                <div className="space-y-2">
+                  <Label>Link to Child (Optional)</Label>
+                  <Select 
+                    value={editingUser.childId || ''} 
+                    onValueChange={(value) => setEditingUser(prev => prev ? { ...prev, childId: value || undefined } : null)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a child to link" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No child linked</SelectItem>
+                      {children.map((child) => (
+                        <SelectItem key={child.id} value={child.id}>
+                          {child.name} (Age: {child.age})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Link this parent account to a child to grant them access to the child's progress data.
+                  </p>
                 </div>
               )}
               <div className="flex justify-end space-x-2 pt-4">

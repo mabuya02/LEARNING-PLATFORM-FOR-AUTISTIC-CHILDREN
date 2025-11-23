@@ -136,6 +136,7 @@ class AttentionMetrics(BaseModel):
     session_id: str
     timestamp: datetime
     is_attentive: bool
+    attention_percentage: float
     eye_aspect_ratio: float
     head_tilt_degrees: float
     face_detected: bool
@@ -308,6 +309,7 @@ class AttentionAnalyzer:
                     session_id=session_id,
                     timestamp=datetime.now(timezone.utc),
                     is_attentive=False,
+                    attention_percentage=0.0,
                     eye_aspect_ratio=0.0,
                     head_tilt_degrees=0.0,
                     face_detected=False,
@@ -317,30 +319,55 @@ class AttentionAnalyzer:
                 return metrics
             
             # Determine attention state based on available metrics
-            if DLIB_AVAILABLE and self.detector is not None:
-                # Use precise thresholds for dlib-based analysis
-                eyes_open = eye_aspect_ratio_value >= EAR_THRESH
-                head_forward = head_tilt_degrees <= ANGLE_MAX
-                logger.info(f"🎯 Dlib-based attention analysis:")
-                logger.info(f"   Eyes open: {eyes_open} (EAR: {eye_aspect_ratio_value:.3f} >= {EAR_THRESH})")
-                logger.info(f"   Head forward: {head_forward} (Tilt: {head_tilt_degrees:.1f}° <= {ANGLE_MAX}°)")
+            # Calculate gradual attention percentage based on metrics
+            # Eye score: Normalized EAR value (0.0 to 1.0)
+            # EAR typically ranges from 0.0 (closed) to 0.4 (wide open)
+            # We'll map 0.0-0.15 as poor, 0.15-0.23 as moderate, 0.23+ as good
+            eye_score = 0.0
+            if eye_aspect_ratio_value <= 0.15:
+                # Eyes mostly closed (0-30%)
+                eye_score = (eye_aspect_ratio_value / 0.15) * 0.3
+            elif eye_aspect_ratio_value < EAR_THRESH:
+                # Eyes partially open (30-70%)
+                eye_score = 0.3 + ((eye_aspect_ratio_value - 0.15) / (EAR_THRESH - 0.15)) * 0.4
             else:
-                # Use fallback logic for OpenCV-based analysis
-                eyes_open = eye_aspect_ratio_value >= EAR_THRESH
-                head_forward = head_tilt_degrees <= ANGLE_MAX
+                # Eyes fully open (70-100%)
+                excess = min(eye_aspect_ratio_value - EAR_THRESH, 0.17)  # Cap at 0.4
+                eye_score = 0.7 + (excess / 0.17) * 0.3
+            
+            # Head pose score: Normalized head tilt (0.0 to 1.0)
+            # 0° = perfect (100%), 20° = threshold (70%), 45° = poor (0%)
+            if head_tilt_degrees <= ANGLE_MAX:
+                # Good range (70-100%)
+                head_score = 0.7 + (1.0 - (head_tilt_degrees / ANGLE_MAX)) * 0.3
+            elif head_tilt_degrees <= 45:
+                # Moderate to poor range (0-70%)
+                head_score = 0.7 * (1.0 - ((head_tilt_degrees - ANGLE_MAX) / (45 - ANGLE_MAX)))
+            else:
+                # Very poor attention
+                head_score = 0.0
+            
+            # Weighted combination: 60% eye, 40% head pose
+            attention_percentage = (eye_score * 60) + (head_score * 40)
+            attention_percentage = max(0, min(100, attention_percentage))  # Clamp to 0-100
+            
+            # Determine if attentive (for backward compatibility)
+            is_attentive = attention_percentage >= 60
+            
+            if DLIB_AVAILABLE and self.detector is not None:
+                logger.info(f"🎯 Dlib-based attention analysis:")
+            else:
                 logger.info(f"🔧 OpenCV-based attention analysis:")
-                logger.info(f"   Eyes open: {eyes_open} (EAR: {eye_aspect_ratio_value:.3f} >= {EAR_THRESH})")
-                logger.info(f"   Head forward: {head_forward} (Tilt: {head_tilt_degrees:.1f}° <= {ANGLE_MAX}°)")
             
-            is_attentive = eyes_open and head_forward
-            attention_percentage = 100 if is_attentive else 0
-            
-            logger.info(f"📈 Final Attention Result: {attention_percentage}% ({'ATTENTIVE' if is_attentive else 'DISTRACTED'})")
+            logger.info(f"   EAR: {eye_aspect_ratio_value:.3f} → Eye Score: {eye_score*100:.1f}%")
+            logger.info(f"   Head Tilt: {head_tilt_degrees:.1f}° → Head Score: {head_score*100:.1f}%")
+            logger.info(f"📈 Final Attention Result: {attention_percentage:.1f}% ({'ATTENTIVE' if is_attentive else 'DISTRACTED'})")
             
             metrics = AttentionMetrics(
                 session_id=session_id,
                 timestamp=datetime.now(timezone.utc),
                 is_attentive=is_attentive,
+                attention_percentage=attention_percentage,
                 eye_aspect_ratio=eye_aspect_ratio_value,
                 head_tilt_degrees=head_tilt_degrees,
                 face_detected=True,
@@ -357,6 +384,7 @@ class AttentionAnalyzer:
                 session_id=session_id,
                 timestamp=datetime.now(timezone.utc),
                 is_attentive=False,
+                attention_percentage=0.0,
                 eye_aspect_ratio=0.0,
                 head_tilt_degrees=0.0,
                 face_detected=False,
@@ -636,6 +664,7 @@ async def websocket_attention_analysis(websocket: WebSocket, session_id: str):
                     "session_id": metrics.session_id,
                     "timestamp": metrics.timestamp.isoformat(),
                     "is_attentive": metrics.is_attentive,
+                    "attention_percentage": metrics.attention_percentage,
                     "eye_aspect_ratio": metrics.eye_aspect_ratio,
                     "head_tilt_degrees": metrics.head_tilt_degrees,
                     "face_detected": metrics.face_detected,

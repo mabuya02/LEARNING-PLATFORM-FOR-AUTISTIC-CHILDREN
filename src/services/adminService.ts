@@ -6,6 +6,7 @@ export interface AdminUserData {
   email: string;
   role: 'admin' | 'educator' | 'parent' | 'child';
   childId?: string;
+  educatorId?: string;
 }
 
 /**
@@ -23,10 +24,10 @@ export async function getAllUsers(): Promise<AdminUserData[]> {
     throw error;
   }
 
-  // Fetch all children records to get parent-child relationships
+  // Fetch all children records to get parent-child relationships and educator assignments
   const { data: childrenData, error: childrenError } = await supabase
     .from('children')
-    .select('id, parent_id, name');
+    .select('id, parent_id, educator_id, name');
 
   if (childrenError) {
     console.error('Error fetching children relationships:', childrenError);
@@ -36,29 +37,36 @@ export async function getAllUsers(): Promise<AdminUserData[]> {
       console.log('🔗 Parent-child mappings:', childrenData.map(c => ({
         childName: c.name,
         childId: c.id,
-        parentId: c.parent_id
+        parentId: c.parent_id,
+        educatorId: c.educator_id
       })));
     }
   }
 
-  // Create a map of parent_id -> child_id for quick lookup
-  const parentChildMap = new Map<string, string>();
+  // Create maps for quick lookup
+  const parentChildMap = new Map<string, string>(); // parent_id -> child_id
+  const childEducatorMap = new Map<string, string>(); // child profile id -> educator_id
+  
   if (childrenData) {
     childrenData.forEach(child => {
       if (child.parent_id) {
         parentChildMap.set(child.parent_id, child.id);
       }
+      // Map child profile id to educator id
+      childEducatorMap.set(child.id, child.educator_id);
     });
   }
 
   console.log('👨‍👩‍👧 Parent-child map size:', parentChildMap.size);
+  console.log('👨‍🏫 Child-educator map size:', childEducatorMap.size);
 
   return data.map(profile => ({
     id: profile.id,
     name: profile.name,
     email: profile.email,
     role: profile.role as 'admin' | 'educator' | 'parent' | 'child',
-    childId: parentChildMap.get(profile.id) // Get linked child if this user is a parent
+    childId: parentChildMap.get(profile.id), // Get linked child if this user is a parent
+    educatorId: childEducatorMap.get(profile.id) // Get assigned educator if this user is a child
   }));
 }
 

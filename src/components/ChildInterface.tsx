@@ -10,11 +10,12 @@ import { Star, Home, Trophy, Clock, LogOut, Play, Pause } from 'lucide-react';
 interface ChildInterfaceProps {
   user: User;
   modules: LearningModule[];
+  progressData?: ProgressData[];
   onProgress: (progress: Omit<ProgressData, 'endTime'>) => void;
   onLogout: () => void;
 }
 
-export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInterfaceProps) {
+export function ChildInterface({ user, modules, progressData = [], onProgress, onLogout }: ChildInterfaceProps) {
   const [currentView, setCurrentView] = useState<'home' | 'learning'>('home');
   const [activeModule, setActiveModule] = useState<LearningModule | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
@@ -23,6 +24,21 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
   const [isActive, setIsActive] = useState(true);
   const [completedModules, setCompletedModules] = useState<string[]>([]);
   const [unlockedDifficulties, setUnlockedDifficulties] = useState<string[]>(['easy']);
+
+  // Initialize completed modules from progress data
+  useEffect(() => {
+    if (progressData && progressData.length > 0) {
+      // Get unique module IDs that have been completed (score >= 80)
+      const completedModuleIds = progressData
+        .filter(p => p.completionRate >= 80)
+        .map(p => p.moduleId)
+        .filter((id, index, arr) => arr.indexOf(id) === index); // Remove duplicates
+      
+      console.log('📈 Loading completed modules from progress data:', completedModuleIds);
+      setCompletedModules(completedModuleIds);
+      checkProgressionUnlock();
+    }
+  }, [progressData, modules]);
 
   // Attention tracking
   useEffect(() => {
@@ -78,14 +94,15 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
     setIsActive(true);
   };
 
-  const completeModule = (completionRate: number, correctAnswers?: number, totalQuestions?: number) => {
+  const completeModule = async (completionRate: number, correctAnswers?: number, totalQuestions?: number) => {
     if (!activeModule || !sessionStartTime) return;
 
     const engagementLevel: 'low' | 'medium' | 'high' = 
       totalAttentionTime > 300 ? 'high' : 
       totalAttentionTime > 120 ? 'medium' : 'low';
 
-    onProgress({
+    // Save progress to database
+    await onProgress({
       moduleId: activeModule.id,
       childId: user.id,
       startTime: sessionStartTime,
@@ -99,7 +116,8 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
     if (completionRate >= 80) {
       setCompletedModules(prev => {
         const newCompleted = [...prev, activeModule.id];
-        checkProgressionUnlock(newCompleted);
+        // Check progression unlock after state updates
+        setTimeout(() => checkProgressionUnlock(), 100);
         return newCompleted;
       });
     }
@@ -110,27 +128,43 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
     setAttentionStartTime(null);
   };
 
-  // Check if child can progress to next difficulty level
-  const checkProgressionUnlock = (completed: string[]) => {
+  // Check if child can progress to next difficulty level based on average score
+  const checkProgressionUnlock = () => {
+    if (!progressData || progressData.length === 0) return;
+
     const easyModules = modules.filter(m => m.difficulty === 'easy');
     const mediumModules = modules.filter(m => m.difficulty === 'medium');
     
-    const completedEasy = completed.filter(id => 
-      easyModules.some(m => m.id === id)
-    ).length;
+    // Calculate average score for easy level
+    const easyProgress = progressData.filter(p => 
+      easyModules.some(m => m.id === p.moduleId)
+    );
     
-    const completedMedium = completed.filter(id => 
-      mediumModules.some(m => m.id === id)
-    ).length;
-
-    // Unlock medium if 3/4 easy modules completed
-    if (completedEasy >= 3 && !unlockedDifficulties.includes('medium')) {
-      setUnlockedDifficulties(prev => [...prev, 'medium']);
+    if (easyProgress.length > 0) {
+      const easyAvgScore = easyProgress.reduce((sum, p) => sum + p.completionRate, 0) / easyProgress.length;
+      console.log('📊 Easy level average score:', easyAvgScore.toFixed(2) + '%');
+      
+      // Unlock medium if easy level average is >= 60%
+      if (easyAvgScore >= 60 && !unlockedDifficulties.includes('medium')) {
+        console.log('🔓 Unlocking medium difficulty!');
+        setUnlockedDifficulties(prev => [...prev, 'medium']);
+      }
     }
 
-    // Unlock hard if 3/4 medium modules completed
-    if (completedMedium >= 3 && !unlockedDifficulties.includes('hard')) {
-      setUnlockedDifficulties(prev => [...prev, 'hard']);
+    // Calculate average score for medium level
+    const mediumProgress = progressData.filter(p => 
+      mediumModules.some(m => m.id === p.moduleId)
+    );
+    
+    if (mediumProgress.length > 0) {
+      const mediumAvgScore = mediumProgress.reduce((sum, p) => sum + p.completionRate, 0) / mediumProgress.length;
+      console.log('📊 Medium level average score:', mediumAvgScore.toFixed(2) + '%');
+      
+      // Unlock hard if medium level average is >= 60%
+      if (mediumAvgScore >= 60 && !unlockedDifficulties.includes('hard')) {
+        console.log('🔓 Unlocking hard difficulty!');
+        setUnlockedDifficulties(prev => [...prev, 'hard']);
+      }
     }
   };
 
