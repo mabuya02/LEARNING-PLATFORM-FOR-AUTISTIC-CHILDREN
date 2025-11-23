@@ -165,6 +165,7 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
 
     const moduleProps = {
       module: activeModule,
+      childId: parseInt(user.id), // Pass user ID as childId for attention tracking
       onComplete: completeModule,
       onExit: () => {
         setActiveModule(null);

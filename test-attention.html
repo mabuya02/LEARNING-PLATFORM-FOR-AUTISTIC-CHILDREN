@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attention Tracking Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        video {
+            width: 320px;
+            height: 240px;
+            border: 2px solid #333;
+            border-radius: 4px;
+        }
+        canvas {
+            display: none;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .metric {
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 4px;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .attentive {
+            background: #d4edda !important;
+        }
+        .not-attentive {
+            background: #f8d7da !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Attention Tracking Test</h1>
+        
+        <div class="controls">
+            <button class="btn-primary" onclick="startSession()">Start Session</button>
+            <button class="btn-danger" onclick="endSession()">End Session</button>
+            <button class="btn-primary" onclick="requestCamera()">Request Camera</button>
+        </div>
+
+        <div id="status" class="status info">Ready to start...</div>
+
+        <div style="margin: 20px 0;">
+            <h3>Camera Feed (Hidden in real app)</h3>
+            <video id="webcam" autoplay muted></video>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="metrics">
+            <div class="metric" id="metric-attention">
+                <div class="metric-label">Attention Status</div>
+                <div class="metric-value" id="attention-status">-</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Face Detected</div>
+                <div class="metric-value" id="face-status">-</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Eye Aspect Ratio</div>
+                <div class="metric-value" id="ear-value">-</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Head Tilt</div>
+                <div class="metric-value" id="tilt-value">-</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Camera Quality</div>
+                <div class="metric-value" id="quality-value">-</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <h3>Log</h3>
+            <div id="log" style="background: #f9f9f9; padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let ws = null;
+        let videoStream = null;
+        let frameInterval = null;
+
+        const API_BASE = 'http://localhost:8000';
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+
+        async function requestCamera() {
+            try {
+                log('Requesting camera access...');
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, frameRate: 10 }
+                });
+                video.srcObject = videoStream;
+                log('✅ Camera access granted', 'success');
+                updateStatus('Camera ready', 'success');
+            } catch (err) {
+                log('❌ Camera access denied: ' + err.message, 'error');
+                updateStatus('Camera access denied', 'error');
+            }
+        }
+
+        async function startSession() {
+            try {
+                if (!videoStream) {
+                    alert('Please request camera access first');
+                    return;
+                }
+
+                log('Starting attention tracking session...');
+                updateStatus('Starting session...', 'info');
+
+                // Step 1: Start session via REST API
+                const response = await fetch(`${API_BASE}/sessions/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        child_id: 'test-child-123',
+                        module_id: 'test-module-456',
+                        video_url: 'https://example.com/test-video.mp4',
+                        video_duration_seconds: 300
+                    })
+                });
+
+                const data = await response.json();
+                sessionId = data.session_id;
+                log(`✅ Session started: ${sessionId}`, 'success');
+
+                // Step 2: Connect WebSocket
+                ws = new WebSocket(`ws://localhost:8000/ws/attention/${sessionId}`);
+
+                ws.onopen = () => {
+                    log('✅ WebSocket connected', 'success');
+                    updateStatus('Tracking active', 'success');
+
+                    // Step 3: Start sending frames
+                    frameInterval = setInterval(() => {
+                        captureAndSendFrame();
+                    }, 500); // 2 FPS
+                };
+
+                ws.onmessage = (event) => {
+                    const response = JSON.parse(event.data);
+                    if (response.type === 'attention_metrics') {
+                        handleAttentionMetrics(response.data);
+                    } else if (response.type === 'session_stats') {
+                        log(`📈 Stats: ${JSON.stringify(response.data)}`);
+                    }
+                };
+
+                ws.onerror = (err) => {
+                    log('❌ WebSocket error: ' + err, 'error');
+                    updateStatus('Connection error', 'error');
+                };
+
+                ws.onclose = () => {
+                    log('WebSocket closed');
+                    updateStatus('Disconnected', 'error');
+                };
+
+            } catch (err) {
+                log('❌ Error starting session: ' + err.message, 'error');
+                updateStatus('Error starting session', 'error');
+            }
+        }
+
+        function captureAndSendFrame() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const frameData = canvas.toDataURL('image/jpeg', 0.8);
+            ws.send(frameData);
+            log('📸 Frame sent');
+        }
+
+        function handleAttentionMetrics(data) {
+            log(`📊 Attention: ${data.is_attentive ? 'ATTENTIVE ✅' : 'DISTRACTED ❌'}`, 
+                data.is_attentive ? 'success' : 'error');
+
+            // Update metrics display
+            const metricAttention = document.getElementById('metric-attention');
+            metricAttention.className = data.is_attentive ? 'metric attentive' : 'metric not-attentive';
+            
+            document.getElementById('attention-status').textContent = 
+                data.is_attentive ? '✅ ATTENTIVE' : '❌ DISTRACTED';
+            document.getElementById('face-status').textContent = 
+                data.face_detected ? '✅ Yes' : '❌ No';
+            document.getElementById('ear-value').textContent = 
+                data.eye_aspect_ratio.toFixed(3);
+            document.getElementById('tilt-value').textContent = 
+                data.head_tilt_degrees.toFixed(1) + '°';
+            document.getElementById('quality-value').textContent = 
+                data.camera_quality.toFixed(0) + '%';
+        }
+
+        async function endSession() {
+            try {
+                if (!sessionId) {
+                    alert('No active session');
+                    return;
+                }
+
+                log('Ending session...');
+
+                // Stop sending frames
+                if (frameInterval) {
+                    clearInterval(frameInterval);
+                    frameInterval = null;
+                }
+
+                // Close WebSocket
+                if (ws) {
+                    ws.close();
+                    ws = null;
+                }
+
+                // End session via API
+                const response = await fetch(`${API_BASE}/sessions/end`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        notes: 'Test session completed'
+                    })
+                });
+
+                const summary = await response.json();
+                log(`✅ Session ended. Summary: ${JSON.stringify(summary)}`, 'success');
+                updateStatus('Session ended', 'info');
+                sessionId = null;
+
+            } catch (err) {
+                log('❌ Error ending session: ' + err.message, 'error');
+                updateStatus('Error ending session', 'error');
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (sessionId) {
+                endSession();
+            }
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Essential FastAPI and web service dependencies
+fastapi==0.116.1
+uvicorn==0.35.0
+websockets==15.0.1
+python-multipart==0.0.20
+
+# Computer vision and attention analysis dependencies  
+opencv-python>=4.8.0
+numpy>=1.24.0
+base64io==1.0.3
+
+# Database and data handling utilities
+psycopg2-binary==2.9.10
+python-dotenv==1.0.1
+pydantic==2.11.5
+aiofiles==24.1.0

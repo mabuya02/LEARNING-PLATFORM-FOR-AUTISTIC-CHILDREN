@@ -4,19 +4,34 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Progress } from '../ui/progress';
 import { LearningModule } from '../../App';
 import { ArrowLeft, Play, CheckCircle, Star } from 'lucide-react';
+import { useAttentionTracking } from '../../hooks/useAttentionTracking';
+import { AttentionIndicator } from '../ui/AttentionIndicator';
 
 interface DynamicLearningModuleProps {
   module: LearningModule;
+  childId: number; // Add childId for attention tracking
   onComplete: (completionRate: number, correctAnswers?: number, totalQuestions?: number) => void;
   onExit: () => void;
 }
 
-export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLearningModuleProps) {
+export function DynamicLearningModule({ module, childId, onComplete, onExit }: DynamicLearningModuleProps) {
   // Check if module has a valid video URL
   const hasVideo = module.videoUrl && module.videoUrl.trim() !== '';
   // If module has video, show it immediately, otherwise show module content
   const [showVideo, setShowVideo] = useState(hasVideo);
   const [isCompleted, setIsCompleted] = useState(false);
+
+  // Initialize attention tracking
+  const attentionTracking = useAttentionTracking({
+    childId,
+    moduleId: parseInt(module.id), // Convert string ID to number
+    videoUrl: module.videoUrl || undefined,
+    videoDuration: module.duration || undefined,
+    onAttentionUpdate: (data) => {
+      console.log('📊 Attention update:', data);
+      // Could add logic here to save periodic updates
+    }
+  });
 
   // Debug logging to check if video URL is present
   console.log('🎬 DynamicLearningModule - Module data:', {
@@ -38,7 +53,7 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
           </Button>
         </div>
 
-        <div className="flex flex-col items-center space-y-6 max-w-4xl mx-auto">
+        <div className="flex flex-col items-center space-y-6 max-w-7xl mx-auto">
           <Card className="w-full">
             <CardHeader>
               <CardTitle className="text-center text-2xl flex items-center justify-center gap-2">
@@ -48,29 +63,61 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
             </CardHeader>
             <CardContent>
               <p className="text-center text-lg mb-6 text-muted-foreground">{module.description}</p>
-              
-              <div className="w-full aspect-video rounded-lg overflow-hidden shadow-lg bg-black">
-                <video
-                  width="100%"
-                  height="100%"
-                  controls
-                  autoPlay
-                  onEnded={() => {
-                    setIsCompleted(true);
-                    onComplete(100, 1, 1); // Mark as completed when video ends
-                  }}
-                  className="w-full h-full"
-                >
-                  <source src={module.videoUrl} type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
+
+              {/* Main Content Area - Video and Attention Tracking */}
+              <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+                {/* Video Player - Takes up most space */}
+                <div className="lg:col-span-5 col-span-1">
+                  <div className="w-full aspect-video rounded-lg overflow-hidden shadow-xl bg-black border-2 border-gray-200" style={{ minHeight: '500px' }}>
+                    <video
+                      width="100%"
+                      height="100%"
+                      controls
+                      autoPlay
+                      className="w-full h-full object-contain"
+                      onPlay={() => {
+                        // Auto-start attention tracking when video plays
+                        if (attentionTracking.hasPermission && !attentionTracking.isTracking) {
+                          attentionTracking.startTracking();
+                        }
+                      }}
+                      onEnded={() => {
+                        setIsCompleted(true);
+                        attentionTracking.stopTracking(); // Stop tracking when video ends
+                        onComplete(100, 1, 1); // Mark as completed when video ends
+                      }}
+                    >
+                      <source src={module.videoUrl} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                </div>
+
+                {/* Attention Tracking Panel */}
+                <div className="lg:col-span-1 col-span-1 space-y-4">
+                  <AttentionIndicator
+                    isTracking={attentionTracking.isTracking}
+                    hasPermission={attentionTracking.hasPermission}
+                    currentAttention={attentionTracking.currentAttention}
+                    error={attentionTracking.error}
+                    onRequestPermission={attentionTracking.requestCameraPermission}
+                    onStartTracking={attentionTracking.startTracking}
+                    onStopTracking={attentionTracking.stopTracking}
+                  />
+
+                  {/* Hidden camera preview and canvas for frame capture */}
+                  <div className="hidden">
+                    <video ref={attentionTracking.videoRef} autoPlay muted className="w-32 h-24" />
+                    <canvas ref={attentionTracking.canvasRef} className="w-32 h-24" />
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-center mt-6 space-x-4">
                 <Button onClick={onExit} variant="outline">
                   Back to Home
                 </Button>
-                <Button 
+                <Button
                   onClick={() => {
                     setIsCompleted(true);
                     onComplete(100, 1, 1);
@@ -103,8 +150,8 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
               <Star className="w-6 h-6 text-yellow-500 fill-current" />
               <Star className="w-6 h-6 text-yellow-500 fill-current" />
             </div>
-            <Button 
-              onClick={() => onComplete(100)} 
+            <Button
+              onClick={() => onComplete(100)}
               className="w-full"
               size="lg"
             >
@@ -139,7 +186,7 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
               {module.title}
             </CardTitle>
             <p className="text-lg text-muted-foreground">{module.description}</p>
-            
+
             {/* Video Available Indicator */}
             {hasVideo && (
               <div className="flex items-center justify-center gap-2 mt-3 text-blue-600">
@@ -147,15 +194,14 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
                 <span className="text-sm font-medium">Video Available</span>
               </div>
             )}
-            
+
             {/* Module Type Badge */}
             <div className="flex justify-center mt-4">
-              <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                module.type === 'visual' ? 'bg-purple-100 text-purple-800' :
-                module.type === 'audio' ? 'bg-green-100 text-green-800' :
-                module.type === 'interactive' ? 'bg-blue-100 text-blue-800' :
-                'bg-yellow-100 text-yellow-800'
-              }`}>
+              <span className={`px-4 py-2 rounded-full text-sm font-medium ${module.type === 'visual' ? 'bg-purple-100 text-purple-800' :
+                  module.type === 'audio' ? 'bg-green-100 text-green-800' :
+                    module.type === 'interactive' ? 'bg-blue-100 text-blue-800' :
+                      'bg-yellow-100 text-yellow-800'
+                }`}>
                 {module.type} learning
               </span>
             </div>
@@ -213,7 +259,7 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
                   <h4 className="text-lg font-medium mb-2">Learning Topics:</h4>
                   <div className="flex flex-wrap gap-2 justify-center">
                     {Object.entries(module.content).map(([key, value]) => (
-                      <span 
+                      <span
                         key={key}
                         className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
                       >
@@ -234,7 +280,7 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
               <div className="flex gap-4 justify-center mt-8">
                 {hasVideo ? (
                   <div className="space-y-4">
-                    <Button 
+                    <Button
                       onClick={() => setShowVideo(true)}
                       size="lg"
                       className="px-8 py-6 text-lg bg-blue-600 hover:bg-blue-700"
@@ -247,7 +293,7 @@ export function DynamicLearningModule({ module, onComplete, onExit }: DynamicLea
                     </p>
                   </div>
                 ) : (
-                  <Button 
+                  <Button
                     onClick={() => setIsCompleted(true)}
                     size="lg"
                     className="px-8 py-6 text-lg"
