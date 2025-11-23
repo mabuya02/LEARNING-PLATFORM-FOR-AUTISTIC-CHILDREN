@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Progress } from '../ui/progress';
@@ -6,10 +6,11 @@ import { LearningModule } from '../../App';
 import { ArrowLeft, Play, CheckCircle, Star } from 'lucide-react';
 import { useAttentionTracking } from '../../hooks/useAttentionTracking';
 import { AttentionIndicator } from '../ui/AttentionIndicator';
+import { progressService } from '../../services/progressService';
 
 interface DynamicLearningModuleProps {
   module: LearningModule;
-  childId: number; // Add childId for attention tracking
+  childId: string; // UUID for the actual child record (not user ID)
   onComplete: (completionRate: number, correctAnswers?: number, totalQuestions?: number) => void;
   onExit: () => void;
 }
@@ -20,11 +21,12 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
   // If module has video, show it immediately, otherwise show module content
   const [showVideo, setShowVideo] = useState(hasVideo);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [videoStartTime, setVideoStartTime] = useState<number | null>(null);
 
   // Initialize attention tracking
   const attentionTracking = useAttentionTracking({
     childId,
-    moduleId: parseInt(module.id), // Convert string ID to number
+    moduleId: module.id, // Use string UUID directly
     videoUrl: module.videoUrl || undefined,
     videoDuration: module.duration || undefined,
     onAttentionUpdate: (data) => {
@@ -33,12 +35,22 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
     }
   });
 
+  // Auto-request camera permission when component mounts (if video is present)
+  useEffect(() => {
+    if (hasVideo && !attentionTracking.hasPermission) {
+      console.log('🎥 Auto-requesting camera permission for attention tracking...');
+      attentionTracking.requestCameraPermission();
+    }
+  }, [hasVideo]);
+
   // Debug logging to check if video URL is present
   console.log('🎬 DynamicLearningModule - Module data:', {
     title: module.title,
     videoUrl: module.videoUrl,
     hasVideo,
-    showVideo
+    showVideo,
+    childId: childId, // Debug the childId being passed
+    moduleId: module.id
   });
 
   // Show the actual learning video when requested
@@ -76,15 +88,41 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
                       autoPlay
                       className="w-full h-full object-contain"
                       onPlay={() => {
+                        // Track video start time
+                        if (!videoStartTime) {
+                          setVideoStartTime(Math.floor(Date.now() / 1000));
+                        }
+                        
                         // Auto-start attention tracking when video plays
                         if (attentionTracking.hasPermission && !attentionTracking.isTracking) {
                           attentionTracking.startTracking();
                         }
                       }}
-                      onEnded={() => {
+                      onEnded={async () => {
                         setIsCompleted(true);
                         attentionTracking.stopTracking(); // Stop tracking when video ends
-                        onComplete(100, 1, 1); // Mark as completed when video ends
+                        
+                        // Save progress to database
+                        try {
+                          const progressData = {
+                            child_id: childId, // Use childId from props directly
+                            module_id: module.id,
+                            module_name: module.title,
+                            score: 100, // Video completion = 100%
+                            time_spent: Math.floor(Date.now() / 1000 - (videoStartTime || 0)), // Calculate actual watch time
+                            correct_answers: 1,
+                            total_questions: 1
+                          };
+                          
+                          console.log('💾 Saving progress with data:', progressData);
+                          await progressService.saveProgress(progressData);
+                          console.log('✅ Progress saved successfully');
+                          
+                          onComplete(100, 1, 1); // Mark as completed when video ends
+                        } catch (error) {
+                          console.error('❌ Failed to save progress:', error);
+                          onComplete(100, 1, 1); // Still mark as completed even if save fails
+                        }
                       }}
                     >
                       <source src={module.videoUrl} type="video/mp4" />
@@ -198,9 +236,9 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
             {/* Module Type Badge */}
             <div className="flex justify-center mt-4">
               <span className={`px-4 py-2 rounded-full text-sm font-medium ${module.type === 'visual' ? 'bg-purple-100 text-purple-800' :
-                  module.type === 'audio' ? 'bg-green-100 text-green-800' :
-                    module.type === 'interactive' ? 'bg-blue-100 text-blue-800' :
-                      'bg-yellow-100 text-yellow-800'
+                module.type === 'audio' ? 'bg-green-100 text-green-800' :
+                  module.type === 'interactive' ? 'bg-blue-100 text-blue-800' :
+                    'bg-yellow-100 text-yellow-800'
                 }`}>
                 {module.type} learning
               </span>

@@ -87,11 +87,36 @@ def get_db_config():
             'database': 'postgres',
             'user': 'postgres',
             'password': SUPABASE_DB_PASSWORD,
-            'port': 5432
+            'port': 5432,  # Use standard PostgreSQL port
+            'sslmode': 'prefer',  # Prefer SSL but allow without if needed
+            'connect_timeout': 10  # 10 second timeout
         }
     except Exception as e:
         logger.error(f"Error parsing database config: {e}")
         return None
+
+def get_db_connection():
+    """Get database connection with fallback to connection pooler port"""
+    if not DB_CONFIG:
+        return None
+        
+    # Try standard port first
+    configs_to_try = [
+        DB_CONFIG,  # Standard port 5432
+        {**DB_CONFIG, 'port': 6543}  # Connection pooler port fallback
+    ]
+    
+    for i, config in enumerate(configs_to_try):
+        try:
+            logger.info(f"Attempting connection to {config['host']}:{config['port']} (attempt {i+1})")
+            conn = psycopg2.connect(**config)
+            logger.info(f"✅ Successfully connected to database on port {config['port']}")
+            return conn
+        except psycopg2.OperationalError as e:
+            logger.warning(f"❌ Connection failed on port {config['port']}: {str(e)}")
+            if i == len(configs_to_try) - 1:  # Last attempt
+                raise
+    return None
 
 DB_CONFIG = get_db_config()
 TILE_GRID = (8, 8)
@@ -445,22 +470,32 @@ class AttentionAnalyzer:
             start_time = session.get('start_time')
             end_time = datetime.now(timezone.utc)
             
-            # Calculate additional metrics
-            duration_minutes = (end_time - start_time).total_seconds() / 60 if start_time else 0
+            # Validate required data
+            if not child_id or not module_id:
+                logger.error(f"Missing required data - child_id: {child_id}, module_id: {module_id}")
+                return
+                
+            if not DB_CONFIG:
+                logger.error("Database configuration not available - skipping save")
+                return
             
-            # Connect to Supabase PostgreSQL
-            conn = psycopg2.connect(**DB_CONFIG)
+            # Connect to Supabase PostgreSQL with fallback logic
+            conn = get_db_connection()
+            if not conn:
+                logger.error("Failed to establish database connection")
+                return
+                
             cursor = conn.cursor()
             
             # Insert into attention_sessions table
             insert_query = """
                 INSERT INTO attention_sessions (
-                    session_id, child_id, learning_module_id, start_time, end_time,
-                    duration_minutes, total_frames_analyzed, frames_with_face_detected,
-                    avg_attention_score, min_attention_score, max_attention_score,
-                    avg_eye_aspect_ratio, avg_head_tilt, attention_breaks_count,
-                    longest_attention_span_seconds, avg_attention_span_seconds,
-                    engagement_level, notes, raw_session_data
+                    id, child_id, module_id, video_url, session_start, session_end,
+                    video_duration_seconds, total_frames_analyzed, attentive_frames,
+                    attention_score, avg_eye_aspect_ratio, avg_head_tilt_degrees,
+                    engagement_level, attention_breaks, longest_attention_span_seconds,
+                    average_attention_span_seconds, frames_with_face, frames_without_face,
+                    notes
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
@@ -479,22 +514,22 @@ class AttentionAnalyzer:
                 session_id,
                 child_id,
                 module_id,
+                session.get('video_url', ''),
                 start_time,
                 end_time,
-                duration_minutes,
+                session.get('video_duration', 0),
                 summary.total_frames,
-                summary.face_detected_frames,
+                summary.attentive_frames,
                 summary.attention_score,
-                summary.min_attention_score,
-                summary.max_attention_score,
-                summary.avg_eye_aspect_ratio,
-                summary.avg_head_tilt,
+                stats.get('avg_ear', 0),
+                stats.get('avg_tilt', 0),
+                summary.engagement_level,
                 summary.attention_breaks,
                 summary.longest_attention_span,
                 summary.avg_attention_span,
-                summary.engagement_level,
-                notes,
-                json.dumps(session_data)
+                stats.get('frames_with_face', 0),
+                stats.get('frames_without_face', 0),
+                notes
             ))
             
             conn.commit()
