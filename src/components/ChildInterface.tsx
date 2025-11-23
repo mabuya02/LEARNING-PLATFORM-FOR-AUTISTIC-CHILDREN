@@ -4,11 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { User, LearningModule, ProgressData } from '../App';
-import { ColorLearningModule } from './learning-modules/ColorLearningModule';
-import { NumberCountingModule } from './learning-modules/NumberCountingModule';
-import { ShapeSortingModule } from './learning-modules/ShapeSortingModule';
-import { AnimalSoundsModule } from './learning-modules/AnimalSoundsModule';
-import { BigAndSmallModule } from './learning-modules/BigAndSmallModule';
+import { DynamicLearningModule } from './learning-modules/DynamicLearningModule';
 import { Star, Home, Trophy, Clock, LogOut, Play, Pause } from 'lucide-react';
 
 interface ChildInterfaceProps {
@@ -176,35 +172,46 @@ export function ChildInterface({ user, modules, onProgress, onLogout }: ChildInt
       }
     };
 
-    switch (activeModule.id) {
-      case '1':
-        return <ColorLearningModule {...moduleProps} />;
-      case '2':
-        return <NumberCountingModule {...moduleProps} />;
-      case '3':
-        return <AnimalSoundsModule {...moduleProps} />;
-      case '4':
-        return <BigAndSmallModule {...moduleProps} />;
-      case '5':
-        return <ShapeSortingModule {...moduleProps} />;
-      default:
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md">
-              <CardHeader>
-                <CardTitle>{activeModule.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="mb-4">{activeModule.description}</p>
-                <Button onClick={() => completeModule(100)} className="w-full">
-                  Complete Module
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        );
-    }
+    // Use the dynamic learning module for all modules from the database
+    return <DynamicLearningModule {...moduleProps} />;
   };
+
+  // Check if modules are loaded
+  if (!modules) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-100 to-purple-100 flex items-center justify-center">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="p-8">
+            <div className="text-6xl mb-4">⏳</div>
+            <h2 className="text-xl mb-2">Loading Learning Modules...</h2>
+            <p className="text-muted-foreground">
+              Please wait while we load your learning adventures!
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (modules.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-100 via-pink-100 to-purple-100 flex items-center justify-center">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="p-8">
+            <div className="text-6xl mb-4">📚</div>
+            <h2 className="text-xl mb-2">No Learning Modules Available</h2>
+            <p className="text-muted-foreground mb-4">
+              Please ask your educator to create some learning modules for you!
+            </p>
+            <Button onClick={onLogout} variant="outline">
+              <LogOut className="w-4 h-4 mr-2" />
+              Back to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (currentView === 'learning' && activeModule) {
     return (

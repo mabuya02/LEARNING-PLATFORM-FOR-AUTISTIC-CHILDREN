@@ -10,10 +10,13 @@ export const moduleService = {
       .eq('is_active', true)
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Error fetching modules:', error);
+      throw error;
+    }
     
     // Map database columns to camelCase
-    return (data || []).map(module => ({
+    const mappedModules = (data || []).map(module => ({
       id: module.id,
       title: module.title,
       description: module.description || '',
@@ -25,6 +28,8 @@ export const moduleService = {
       createdBy: module.created_by,
       videoUrl: module.video_url || ''
     }));
+
+    return mappedModules;
   },
 
   // Get module by ID

@@ -74,6 +74,40 @@ export default function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false); // Flag to prevent auth state change interference
   const [showResetPasswordPage, setShowResetPasswordPage] = useState(false);
 
+  // Load modules on app initialization
+  useEffect(() => {
+    loadInitialModules();
+  }, []);
+
+  // Load modules for all users (including non-authenticated children)
+  const loadInitialModules = async () => {
+    try {
+      console.log('📚 Loading initial modules...');
+      const modules = await moduleService.getModules();
+      setLearningModules(modules);
+      console.log('✅ Loaded', modules.length, 'modules');
+    } catch (error) {
+      console.error('❌ Error loading initial modules:', error);
+      // Fallback to empty array if module loading fails
+      setLearningModules([]);
+    }
+  };
+
+  // Refresh modules (can be called after user login or module changes)
+  const refreshModules = async () => {
+    try {
+      console.log('🔄 Refreshing modules...');
+      const modules = await moduleService.getModules();
+      setLearningModules(modules);
+      console.log('📚 Refreshed modules:', modules.length);
+      if (modules.length > 0) {
+        console.log('🎬 Sample module with video:', modules.find(m => m.videoUrl));
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing modules:', error);
+    }
+  };
+
   // Check for existing session on mount
   useEffect(() => {
     checkSession();
@@ -200,13 +234,8 @@ export default function App() {
         setUser(userObj);
         console.log('✅ User state set:', userObj);
 
-        // Load modules
-        const modules = await moduleService.getModules();
-        setLearningModules(modules);
-        console.log('📚 Loaded modules:', modules.length);
-        if (modules.length > 0) {
-          console.log('🎬 Sample module with video:', modules.find(m => m.videoUrl));
-        }
+        // Load modules (they should already be loaded from initialization, but refresh them)
+        await refreshModules();
 
         // Load admin-specific data
         if (profile.role === 'admin') {
@@ -333,223 +362,8 @@ export default function App() {
     { email: 'alex@kids.com', password: 'child123', role: 'child' as UserRole }
   ];
 
-  // Mock data initialization
-  useEffect(() => {
-    const mockModules: LearningModule[] = [
-      // Easy Level Modules (4 modules)
-      {
-        id: '1',
-        title: 'Color Recognition',
-        description: 'Learn about different colors with fun activities',
-        type: 'visual',
-        difficulty: 'easy',
-        duration: 10,
-        content: { colors: ['red', 'blue', 'green', 'yellow'] },
-        createdBy: 'educator1',
-        ageGroup: '3-6'
-      },
-      {
-        id: '2',
-        title: 'Number Counting',
-        description: 'Count numbers from 1 to 10',
-        type: 'interactive',
-        difficulty: 'easy',
-        duration: 15,
-        content: { range: [1, 10], exercises: ['counting', 'matching'] },
-        createdBy: 'educator1',
-        ageGroup: '4-7'
-      },
-      {
-        id: '3',
-        title: 'Animal Sounds',
-        description: 'Match animals with their sounds',
-        type: 'audio',
-        difficulty: 'easy',
-        duration: 8,
-        content: { animals: ['cow', 'dog', 'cat', 'bird'] },
-        createdBy: 'educator2',
-        ageGroup: '3-5'
-      },
-      {
-        id: '4',
-        title: 'Big and Small',
-        description: 'Learn about size differences',
-        type: 'visual',
-        difficulty: 'easy',
-        duration: 12,
-        content: { concepts: ['big', 'small', 'bigger', 'smaller'] },
-        createdBy: 'educator1',
-        ageGroup: '3-6'
-      },
-      
-      // Medium Level Modules (4 modules)
-      {
-        id: '5',
-        title: 'Shape Sorting',
-        description: 'Sort different shapes into categories',
-        type: 'game',
-        difficulty: 'medium',
-        duration: 12,
-        content: { shapes: ['circle', 'square', 'triangle', 'rectangle'] },
-        createdBy: 'educator1',
-        ageGroup: '5-8'
-      },
-      {
-        id: '6',
-        title: 'Pattern Recognition',
-        description: 'Complete visual patterns and sequences',
-        type: 'visual',
-        difficulty: 'medium',
-        duration: 18,
-        content: { patterns: ['ABAB', 'AABB', 'ABC'] },
-        createdBy: 'educator2',
-        ageGroup: '5-8'
-      },
-      {
-        id: '7',
-        title: 'Simple Addition',
-        description: 'Add numbers from 1 to 5',
-        type: 'interactive',
-        difficulty: 'medium',
-        duration: 20,
-        content: { operations: ['addition'], range: [1, 5] },
-        createdBy: 'educator1',
-        ageGroup: '6-8'
-      },
-      {
-        id: '8',
-        title: 'Memory Games',
-        description: 'Remember and match pairs of objects',
-        type: 'game',
-        difficulty: 'medium',
-        duration: 15,
-        content: { pairs: 6, themes: ['animals', 'colors', 'shapes'] },
-        createdBy: 'educator2',
-        ageGroup: '5-8'
-      },
-      
-      // Hard Level Modules (4 modules)
-      {
-        id: '9',
-        title: 'Advanced Math',
-        description: 'Solve addition and subtraction problems',
-        type: 'interactive',
-        difficulty: 'hard',
-        duration: 25,
-        content: { operations: ['addition', 'subtraction'], range: [1, 20] },
-        createdBy: 'educator1',
-        ageGroup: '7-10'
-      },
-      {
-        id: '10',
-        title: 'Reading Comprehension',
-        description: 'Read simple stories and answer questions',
-        type: 'visual',
-        difficulty: 'hard',
-        duration: 30,
-        content: { stories: ['short', 'medium'], questions: 5 },
-        createdBy: 'educator2',
-        ageGroup: '6-9'
-      },
-      {
-        id: '11',
-        title: 'Complex Patterns',
-        description: 'Solve advanced pattern sequences',
-        type: 'visual',
-        difficulty: 'hard',
-        duration: 22,
-        content: { patterns: ['ABCABC', 'AABBAABB', 'ABCDABCD'] },
-        createdBy: 'educator1',
-        ageGroup: '7-10'
-      },
-      {
-        id: '12',
-        title: 'Problem Solving',
-        description: 'Use logic to solve puzzles and challenges',
-        type: 'game',
-        difficulty: 'hard',
-        duration: 28,
-        content: { puzzles: ['logic', 'spatial', 'sequence'] },
-        createdBy: 'educator2',
-        ageGroup: '8-11'
-      }
-    ];
-
-    const mockProgress: ProgressData[] = [
-      // Child 1 Progress
-      {
-        moduleId: '1',
-        childId: 'child1',
-        startTime: new Date(Date.now() - 86400000),
-        endTime: new Date(Date.now() - 86400000 + 600000),
-        attentionSpan: 480,
-        completionRate: 85,
-        correctAnswers: 8,
-        totalQuestions: 10,
-        engagementLevel: 'high'
-      },
-      {
-        moduleId: '2',
-        childId: 'child1',
-        startTime: new Date(Date.now() - 43200000),
-        endTime: new Date(Date.now() - 43200000 + 900000),
-        attentionSpan: 720,
-        completionRate: 92,
-        correctAnswers: 9,
-        totalQuestions: 10,
-        engagementLevel: 'high'
-      },
-      {
-        moduleId: '3',
-        childId: 'child1',
-        startTime: new Date(Date.now() - 21600000),
-        endTime: new Date(Date.now() - 21600000 + 480000),
-        attentionSpan: 390,
-        completionRate: 78,
-        correctAnswers: 7,
-        totalQuestions: 9,
-        engagementLevel: 'medium'
-      },
-      {
-        moduleId: '5',
-        childId: 'child1',
-        startTime: new Date(Date.now() - 10800000),
-        endTime: new Date(Date.now() - 10800000 + 720000),
-        attentionSpan: 600,
-        completionRate: 88,
-        correctAnswers: 8,
-        totalQuestions: 9,
-        engagementLevel: 'high'
-      },
-      
-      // Child 2 Progress
-      {
-        moduleId: '1',
-        childId: 'child2',
-        startTime: new Date(Date.now() - 172800000),
-        endTime: new Date(Date.now() - 172800000 + 540000),
-        attentionSpan: 420,
-        completionRate: 70,
-        correctAnswers: 6,
-        totalQuestions: 10,
-        engagementLevel: 'medium'
-      },
-      {
-        moduleId: '2',
-        childId: 'child2',
-        startTime: new Date(Date.now() - 129600000),
-        endTime: new Date(Date.now() - 129600000 + 660000),
-        attentionSpan: 480,
-        completionRate: 82,
-        correctAnswers: 8,
-        totalQuestions: 10,
-        engagementLevel: 'high'
-      }
-    ];
-
-    setLearningModules(mockModules);
-    setProgressData(mockProgress);
-  }, []);
+  // This useEffect will be handled by loadUserData when user logs in
+  // Modules are now loaded dynamically from the database
 
   const handleLogin = async (credentials: UserCredentials): Promise<User | null> => {
     console.log('🚀 handleLogin START - setting isLoggingIn to true');
