@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { User, LearningModule, Question } from '../App';
-import { Plus, BookOpen, Clock, Users, LogOut, Edit, Trash2, Video, Upload, X, Eye, HelpCircle } from 'lucide-react';
+import { Plus, BookOpen, Clock, Users, LogOut, Edit, Trash2, Video, Upload, X, Eye, HelpCircle, GraduationCap, TrendingUp, Target, Brain, Award } from 'lucide-react';
 import { QuestionEditor } from './QuestionEditor';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
@@ -356,6 +356,67 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     }
   };
 
+  // Get unique children from progress data
+  const getUniqueChildren = () => {
+    const childrenMap = new Map();
+    progressData.forEach((progress: any) => {
+      const childId = progress.childId || progress.child_id;
+      const childName = progress.childName || progress.child_name || `Child ${childId?.slice(0, 8)}`;
+      if (childId && !childrenMap.has(childId)) {
+        childrenMap.set(childId, { id: childId, name: childName });
+      }
+    });
+    return Array.from(childrenMap.values());
+  };
+
+  // Get child performance data
+  const getChildPerformance = (childId: string) => {
+    const childProgress = progressData.filter((p: any) => 
+      (p.childId || p.child_id) === childId
+    );
+
+    if (childProgress.length === 0) {
+      return {
+        totalModules: 0,
+        avgScore: 0,
+        totalQuestions: 0,
+        correctAnswers: 0,
+        avgAttention: 0,
+        totalTime: 0,
+        recentSessions: []
+      };
+    }
+
+    const totalModules = childProgress.length;
+    const avgScore = Math.round(
+      childProgress.reduce((sum: number, p: any) => sum + (p.score || 0), 0) / totalModules
+    );
+    const totalQuestions = childProgress.reduce((sum: number, p: any) => 
+      sum + (p.total_questions || p.totalQuestions || 0), 0
+    );
+    const correctAnswers = childProgress.reduce((sum: number, p: any) => 
+      sum + (p.correct_answers || p.correctAnswers || 0), 0
+    );
+    const avgAttention = Math.round(
+      childProgress.reduce((sum: number, p: any) => 
+        sum + (p.attention_span || p.attentionSpan || 0), 0
+      ) / totalModules
+    );
+    const totalTime = childProgress.reduce((sum: number, p: any) => 
+      sum + (p.time_spent || p.timeSpent || 0), 0
+    );
+
+    return {
+      totalModules,
+      avgScore,
+      totalQuestions,
+      correctAnswers,
+      avgAttention,
+      totalTime,
+      recentSessions: childProgress.slice(-5).reverse()
+    };
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -420,6 +481,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
         <Tabs defaultValue="modules" className="space-y-4">
           <TabsList>
             <TabsTrigger value="modules">Learning Modules</TabsTrigger>
+            <TabsTrigger value="students">Student Performance</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
@@ -935,6 +997,160 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                 </Card>
               ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="students" className="space-y-4">
+          {statsCards.activeLearners === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Students Assigned</h3>
+                <p className="text-gray-600">Student performance data will appear once children are assigned and complete modules.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {getUniqueChildren().map((child) => {
+                const performance = getChildPerformance(child.id);
+                const accuracyRate = performance.totalQuestions > 0 
+                  ? Math.round((performance.correctAnswers / performance.totalQuestions) * 100)
+                  : 0;
+
+                return (
+                  <Card key={child.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                            <GraduationCap className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-xl">{child.name}</CardTitle>
+                            <p className="text-sm text-muted-foreground">Performance Overview</p>
+                          </div>
+                        </div>
+                        <Badge className="text-lg px-4 py-2" variant={performance.avgScore >= 80 ? 'default' : performance.avgScore >= 60 ? 'secondary' : 'outline'}>
+                          {performance.avgScore}% Avg Score
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {/* Performance Metrics */}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <div className="p-4 bg-blue-50 rounded-lg text-center">
+                          <BookOpen className="w-6 h-6 text-blue-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-blue-900">{performance.totalModules}</p>
+                          <p className="text-xs text-blue-700">Modules Completed</p>
+                        </div>
+                        <div className="p-4 bg-green-50 rounded-lg text-center">
+                          <Target className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-green-900">{accuracyRate}%</p>
+                          <p className="text-xs text-green-700">Quiz Accuracy</p>
+                        </div>
+                        <div className="p-4 bg-purple-50 rounded-lg text-center">
+                          <Brain className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-purple-900">{Math.round(performance.avgAttention)}%</p>
+                          <p className="text-xs text-purple-700">Avg Attention</p>
+                        </div>
+                        <div className="p-4 bg-orange-50 rounded-lg text-center">
+                          <Clock className="w-6 h-6 text-orange-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-orange-900">{Math.round(performance.totalTime / 60)}</p>
+                          <p className="text-xs text-orange-700">Minutes Learned</p>
+                        </div>
+                        <div className="p-4 bg-yellow-50 rounded-lg text-center">
+                          <Award className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
+                          <p className="text-2xl font-bold text-yellow-900">{performance.correctAnswers}/{performance.totalQuestions}</p>
+                          <p className="text-xs text-yellow-700">Correct Answers</p>
+                        </div>
+                      </div>
+
+                      {/* Recent Sessions */}
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3 flex items-center">
+                          <TrendingUp className="w-4 h-4 mr-2" />
+                          Recent Activity
+                        </h4>
+                        {performance.recentSessions.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {performance.recentSessions.map((session: any, idx: number) => {
+                              const moduleName = session.module_name || session.moduleName || 'Unknown Module';
+                              const score = session.score || 0;
+                              const correctAnswers = session.correct_answers || session.correctAnswers || 0;
+                              const totalQuestions = session.total_questions || session.totalQuestions || 0;
+                              const attentionSpan = session.attention_span || session.attentionSpan || 0;
+                              const completedAt = session.completed_at || session.completedAt;
+
+                              return (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-sm">{moduleName}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {completedAt ? new Date(completedAt).toLocaleDateString('en-US', { 
+                                        month: 'short', 
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      }) : 'Recently'}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <div className="text-center">
+                                      <p className="font-bold text-blue-600">{score}%</p>
+                                      <p className="text-xs text-muted-foreground">Score</p>
+                                    </div>
+                                    {totalQuestions > 0 && (
+                                      <div className="text-center">
+                                        <p className="font-bold text-green-600">{correctAnswers}/{totalQuestions}</p>
+                                        <p className="text-xs text-muted-foreground">Quiz</p>
+                                      </div>
+                                    )}
+                                    <div className="text-center">
+                                      <p className="font-bold text-purple-600">{Math.round(attentionSpan)}%</p>
+                                      <p className="text-xs text-muted-foreground">Attention</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Performance Insights */}
+                      <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                        <h4 className="text-sm font-semibold mb-2 flex items-center">
+                          <Brain className="w-4 h-4 mr-2 text-blue-600" />
+                          Performance Insights
+                        </h4>
+                        <div className="space-y-1 text-sm">
+                          {performance.avgScore >= 80 && (
+                            <p className="text-green-700">✓ Excellent performance! Consistently scoring above 80%</p>
+                          )}
+                          {performance.avgScore < 60 && (
+                            <p className="text-orange-700">⚠ May need additional support - average score below 60%</p>
+                          )}
+                          {accuracyRate >= 80 && performance.totalQuestions > 0 && (
+                            <p className="text-green-700">✓ Strong quiz performance with {accuracyRate}% accuracy</p>
+                          )}
+                          {performance.avgAttention >= 70 && (
+                            <p className="text-blue-700">✓ Great attention span - stays focused during lessons</p>
+                          )}
+                          {performance.avgAttention < 50 && (
+                            <p className="text-orange-700">⚠ Attention could be improved - consider shorter or more engaging modules</p>
+                          )}
+                          {performance.totalModules >= 5 && (
+                            <p className="text-purple-700">🌟 Active learner! Completed {performance.totalModules} modules</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="analytics">
