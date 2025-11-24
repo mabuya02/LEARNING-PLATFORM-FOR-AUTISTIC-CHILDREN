@@ -14,7 +14,7 @@ export const moduleService = {
       console.error('❌ Error fetching modules:', error);
       throw error;
     }
-    
+
     // Map database columns to camelCase
     const mappedModules = (data || []).map(module => ({
       id: module.id,
@@ -26,7 +26,8 @@ export const moduleService = {
       ageGroup: module.age_group || '3-10',
       content: module.content || {},
       createdBy: module.created_by,
-      videoUrl: module.video_url || ''
+      videoUrl: module.video_url || '',
+      questions: module.questions || []
     }));
 
     return mappedModules;
@@ -42,7 +43,7 @@ export const moduleService = {
 
     if (error) throw error;
     if (!data) return null;
-    
+
     // Map database columns to camelCase
     return {
       id: data.id,
@@ -54,7 +55,8 @@ export const moduleService = {
       ageGroup: data.age_group || '3-10',
       content: data.content || {},
       createdBy: data.created_by,
-      videoUrl: data.video_url || ''
+      videoUrl: data.video_url || '',
+      questions: data.questions || []
     };
   },
 
@@ -67,7 +69,7 @@ export const moduleService = {
       .eq('is_active', true);
 
     if (error) throw error;
-    
+
     // Map database columns to camelCase
     return (data || []).map(module => ({
       id: module.id,
@@ -79,7 +81,8 @@ export const moduleService = {
       ageGroup: module.age_group || '3-10',
       content: module.content || {},
       createdBy: module.created_by,
-      videoUrl: module.video_url || ''
+      videoUrl: module.video_url || '',
+      questions: module.questions || []
     }));
   },
 
@@ -97,13 +100,14 @@ export const moduleService = {
         content: module.content,
         created_by: module.createdBy,
         video_url: module.videoUrl || null,
+        questions: module.questions || [],
         is_active: true
       }])
       .select()
       .single();
 
     if (error) throw error;
-    
+
     // Map database columns to camelCase
     return {
       id: data.id,
@@ -115,14 +119,15 @@ export const moduleService = {
       ageGroup: data.age_group,
       content: data.content,
       createdBy: data.created_by,
-      videoUrl: data.video_url
+      videoUrl: data.video_url,
+      questions: data.questions
     };
   },
 
   // Update a module
   async updateModule(id: string, updates: Partial<LearningModule>): Promise<LearningModule> {
     const updateData: any = {};
-    
+
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.description !== undefined) updateData.description = updates.description;
     if (updates.type !== undefined) updateData.type = updates.type;
@@ -131,6 +136,7 @@ export const moduleService = {
     if (updates.ageGroup !== undefined) updateData.age_group = updates.ageGroup;
     if (updates.content !== undefined) updateData.content = updates.content;
     if (updates.videoUrl !== undefined) updateData.video_url = updates.videoUrl;
+    if (updates.questions !== undefined) updateData.questions = updates.questions;
 
     const { data, error } = await supabase
       .from('learning_modules')
@@ -140,7 +146,7 @@ export const moduleService = {
       .single();
 
     if (error) throw error;
-    
+
     // Map database columns to camelCase
     return {
       id: data.id,
@@ -152,7 +158,8 @@ export const moduleService = {
       ageGroup: data.age_group,
       content: data.content,
       createdBy: data.created_by,
-      videoUrl: data.video_url
+      videoUrl: data.video_url,
+      questions: data.questions
     };
   },
 

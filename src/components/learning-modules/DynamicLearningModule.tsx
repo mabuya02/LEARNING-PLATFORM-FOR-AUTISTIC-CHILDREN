@@ -7,6 +7,7 @@ import { ArrowLeft, Play, CheckCircle, Star } from 'lucide-react';
 import { useAttentionTracking } from '../../hooks/useAttentionTracking';
 import { AttentionIndicator } from '../ui/AttentionIndicator';
 import { progressService } from '../../services/progressService';
+import { QuizView } from './QuizView';
 
 interface DynamicLearningModuleProps {
   module: LearningModule;
@@ -21,7 +22,9 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
   // If module has video, show it immediately, otherwise show module content
   const [showVideo, setShowVideo] = useState(hasVideo);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
   const [videoStartTime, setVideoStartTime] = useState<number | null>(null);
+  const [videoAttentionSpan, setVideoAttentionSpan] = useState<number>(0);
 
   // Initialize attention tracking
   const attentionTracking = useAttentionTracking({
@@ -50,8 +53,108 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
     hasVideo,
     showVideo,
     childId: childId, // Debug the childId being passed
-    moduleId: module.id
+    moduleId: module.id,
+    hasQuestions: module.questions && module.questions.length > 0
   });
+
+  const handleContentCompletion = async () => {
+    // Capture attention span from tracker
+    // The currentAttention object doesn't have a duration, so we'll use the session stats if available
+    // For now, we'll estimate it based on the time spent if we don't have direct access to session stats here
+    // In a real implementation, we'd expose session stats from the hook
+    const currentAttentionSpan = attentionTracking.currentAttention?.attention_score || 0;
+    setVideoAttentionSpan(currentAttentionSpan);
+    console.log('📹 Video completed. Attention score captured:', currentAttentionSpan);
+
+    // If there are questions, show the quiz
+    if (module.questions && module.questions.length > 0) {
+      // Save intermediate progress for video completion (optional but good for data safety)
+      try {
+        const progressData = {
+          child_id: childId,
+          module_id: module.id,
+          module_name: module.title,
+          score: 100, // Video completed
+          time_spent: Math.floor(Date.now() / 1000 - (videoStartTime || Math.floor(Date.now() / 1000))),
+          correct_answers: 0,
+          total_questions: 0,
+          attention_span: currentAttentionSpan
+        };
+        console.log('💾 Saving video completion progress:', progressData);
+        await progressService.saveProgress(progressData);
+      } catch (error) {
+        console.error('❌ Failed to save video progress:', error);
+      }
+
+      setShowQuiz(true);
+      setShowVideo(false);
+      return;
+    }
+
+    // Otherwise, complete the module immediately
+    setIsCompleted(true);
+
+    // Save progress to database
+    try {
+      const progressData = {
+        child_id: childId,
+        module_id: module.id,
+        module_name: module.title,
+        score: 100, // No quiz = 100%
+        time_spent: Math.floor(Date.now() / 1000 - (videoStartTime || Math.floor(Date.now() / 1000))),
+        correct_answers: 0,
+        total_questions: 0,
+        attention_span: currentAttentionSpan
+      };
+
+      console.log('💾 Saving progress with data:', progressData);
+      await progressService.saveProgress(progressData);
+      console.log('✅ Progress saved successfully');
+
+      onComplete(100, 0, 0);
+    } catch (error) {
+      console.error('❌ Failed to save progress:', error);
+      onComplete(100, 0, 0);
+    }
+  };
+
+  const handleQuizCompletion = async (score: number, correctAnswers: number) => {
+    setIsCompleted(true);
+    setShowQuiz(false);
+
+    // Save progress to database
+    try {
+      const progressData = {
+        child_id: childId,
+        module_id: module.id,
+        module_name: module.title,
+        score: score,
+        time_spent: Math.floor(Date.now() / 1000 - (videoStartTime || Math.floor(Date.now() / 1000))),
+        correct_answers: correctAnswers,
+        total_questions: module.questions?.length || 0,
+        attention_span: videoAttentionSpan // Include the captured attention span from video
+      };
+
+      console.log('💾 Saving quiz progress with data:', progressData);
+      await progressService.saveProgress(progressData);
+      console.log('✅ Quiz progress saved successfully');
+
+      onComplete(score, correctAnswers, module.questions?.length || 0);
+    } catch (error) {
+      console.error('❌ Failed to save quiz progress:', error);
+      onComplete(score, correctAnswers, module.questions?.length || 0);
+    }
+  };
+
+  // Show quiz if active
+  if (showQuiz && module.questions) {
+    return (
+      <QuizView
+        questions={module.questions}
+        onComplete={handleQuizCompletion}
+      />
+    );
+  }
 
   // Show the actual learning video when requested
   if (showVideo && hasVideo) {
@@ -92,37 +195,15 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
                         if (!videoStartTime) {
                           setVideoStartTime(Math.floor(Date.now() / 1000));
                         }
-                        
+
                         // Auto-start attention tracking when video plays
                         if (attentionTracking.hasPermission && !attentionTracking.isTracking) {
                           attentionTracking.startTracking();
                         }
                       }}
                       onEnded={async () => {
-                        setIsCompleted(true);
                         attentionTracking.stopTracking(); // Stop tracking when video ends
-                        
-                        // Save progress to database
-                        try {
-                          const progressData = {
-                            child_id: childId, // Use childId from props directly
-                            module_id: module.id,
-                            module_name: module.title,
-                            score: 100, // Video completion = 100%
-                            time_spent: Math.floor(Date.now() / 1000 - (videoStartTime || 0)), // Calculate actual watch time
-                            correct_answers: 1,
-                            total_questions: 1
-                          };
-                          
-                          console.log('💾 Saving progress with data:', progressData);
-                          await progressService.saveProgress(progressData);
-                          console.log('✅ Progress saved successfully');
-                          
-                          onComplete(100, 1, 1); // Mark as completed when video ends
-                        } catch (error) {
-                          console.error('❌ Failed to save progress:', error);
-                          onComplete(100, 1, 1); // Still mark as completed even if save fails
-                        }
+                        handleContentCompletion();
                       }}
                     >
                       <source src={module.videoUrl} type="video/mp4" />
@@ -157,8 +238,7 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
                 </Button>
                 <Button
                   onClick={() => {
-                    setIsCompleted(true);
-                    onComplete(100, 1, 1);
+                    handleContentCompletion();
                   }}
                   className="bg-green-500 hover:bg-green-600"
                 >
@@ -332,7 +412,7 @@ export function DynamicLearningModule({ module, childId, onComplete, onExit }: D
                   </div>
                 ) : (
                   <Button
-                    onClick={() => setIsCompleted(true)}
+                    onClick={() => handleContentCompletion()}
                     size="lg"
                     className="px-8 py-6 text-lg"
                   >

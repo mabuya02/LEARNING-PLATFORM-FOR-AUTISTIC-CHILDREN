@@ -10,6 +10,7 @@ export const progressService = {
     time_spent: number;
     correct_answers: number;
     total_questions: number;
+    attention_span?: number;
   }): Promise<Progress> {
     const { data, error } = await supabase
       .from('progress')
@@ -56,7 +57,7 @@ export const progressService = {
     if (error) throw error;
 
     const progress = data || [];
-    
+
     // Calculate statistics
     const totalModulesCompleted = progress.length;
     const averageScore = progress.length > 0
@@ -65,9 +66,9 @@ export const progressService = {
     const totalTimeSpent = progress.reduce((sum, p) => sum + p.time_spent, 0);
     const accuracyRate = progress.length > 0
       ? progress.reduce((sum, p) => {
-          const rate = p.total_questions > 0 ? (p.correct_answers / p.total_questions) * 100 : 0;
-          return sum + rate;
-        }, 0) / progress.length
+        const rate = p.total_questions > 0 ? (p.correct_answers / p.total_questions) * 100 : 0;
+        return sum + rate;
+      }, 0) / progress.length
       : 0;
 
     return {

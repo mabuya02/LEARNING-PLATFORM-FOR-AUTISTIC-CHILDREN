@@ -9,8 +9,9 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import { User, LearningModule } from '../App';
-import { Plus, BookOpen, Clock, Users, LogOut, Edit, Trash2, Video, Upload, X, Eye } from 'lucide-react';
+import { User, LearningModule, Question } from '../App';
+import { Plus, BookOpen, Clock, Users, LogOut, Edit, Trash2, Video, Upload, X, Eye, HelpCircle } from 'lucide-react';
+import { QuestionEditor } from './QuestionEditor';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 
@@ -39,7 +40,8 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     duration: 10,
     ageGroup: '3-6',
     videoUrl: '',
-    content: {}
+    content: {},
+    questions: [] as Question[]
   });
 
   // Debug logging
@@ -80,11 +82,11 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     } : { name: 'No data', completionRate: 0 };
 
     // Average attention span (convert seconds to minutes)
-    const totalAttention = progressData.reduce((sum: number, p: any) => 
+    const totalAttention = progressData.reduce((sum: number, p: any) =>
       sum + (p.attentionSpan || p.attention_span || 0), 0
     );
-    const avgAttentionSpan = progressData.length > 0 
-      ? (totalAttention / progressData.length / 60).toFixed(1) 
+    const avgAttentionSpan = progressData.length > 0
+      ? (totalAttention / progressData.length / 60).toFixed(1)
       : '0';
 
     // Engagement by type
@@ -183,7 +185,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
       }
 
       setIsUploadingVideo(true);
-      
+
       try {
         // Generate unique filename
         const fileExt = file.name.split('.').pop();
@@ -211,7 +213,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
         const localUrl = URL.createObjectURL(file);
         setVideoPreview(localUrl);
         setNewModule(prev => ({ ...prev, videoUrl: publicUrl }));
-        
+
         toast.success('Video uploaded!', {
           description: `${file.name} has been uploaded successfully.`
         });
@@ -230,7 +232,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     if (videoPreview) {
       URL.revokeObjectURL(videoPreview);
     }
-    
+
     // Delete from Supabase Storage if it exists
     if (newModule.videoUrl && newModule.videoUrl.includes('module-videos')) {
       try {
@@ -244,7 +246,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
         console.error('Error deleting video:', error);
       }
     }
-    
+
     setVideoFile(null);
     setVideoPreview('');
     setNewModule(prev => ({ ...prev, videoUrl: '' }));
@@ -283,7 +285,8 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
         duration: 10,
         ageGroup: '3-6',
         videoUrl: '',
-        content: {}
+        content: {},
+        questions: []
       });
       setIsCreating(false);
     } catch (error) {
@@ -310,6 +313,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
         duration: Number(editingModule.duration) || 10,
         ageGroup: editingModule.ageGroup?.trim() || '3-6',
         videoUrl: editingModule.videoUrl || '',
+        questions: editingModule.questions || []
       };
 
       await onUpdateModule(editingModule.id, updatedModule);
@@ -429,11 +433,11 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                     Create Module
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-[90vw] lg:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
                   <DialogHeader>
                     <DialogTitle>Create New Learning Module</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4">
+                  <div className="space-y-4 overflow-y-auto pr-2 flex-1" style={{ maxHeight: 'calc(90vh - 120px)' }}>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="title">Module Title</Label>
@@ -562,14 +566,21 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                       </div>
                     </div>
 
-                    <div className="flex justify-end space-x-2 pt-4">
-                      <Button variant="outline" onClick={() => setIsCreating(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleCreateModule}>
-                        Create Module
-                      </Button>
+                    <div className="space-y-2">
+                      <QuestionEditor
+                        questions={newModule.questions}
+                        onChange={(questions) => setNewModule(prev => ({ ...prev, questions }))}
+                      />
                     </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-4 border-t mt-4">
+                    <Button variant="outline" onClick={() => setIsCreating(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCreateModule}>
+                      Create Module
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
@@ -591,10 +602,11 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                               <Eye className="w-4 h-4" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                          <DialogContent className="max-w-[90vw] lg:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
                             <DialogHeader>
                               <DialogTitle className="text-2xl">Module Details</DialogTitle>
                             </DialogHeader>
+                            <div className="overflow-y-auto pr-2 flex-1" style={{ maxHeight: 'calc(90vh - 120px)' }}>
                             {viewingModule && (
                               <div className="space-y-6">
                                 {/* Video Section */}
@@ -661,6 +673,31 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                     <p className="text-sm text-blue-600 mb-1">Created By</p>
                                     <p className="text-blue-800 font-medium">{user.name} (You)</p>
                                   </div>
+
+
+                                  {/* Questions Preview */}
+                                  {viewingModule.questions && viewingModule.questions.length > 0 && (
+                                    <div className="space-y-2">
+                                      <h3 className="text-lg font-semibold flex items-center">
+                                        <HelpCircle className="w-5 h-5 mr-2 text-purple-500" />
+                                        Quiz Questions ({viewingModule.questions.length})
+                                      </h3>
+                                      <div className="space-y-2">
+                                        {viewingModule.questions.map((q, i) => (
+                                          <div key={i} className="p-3 bg-gray-50 rounded border">
+                                            <p className="font-medium mb-1">{i + 1}. {q.text}</p>
+                                            <ul className="list-disc list-inside text-sm text-gray-600 pl-2">
+                                              {q.options.map((opt, j) => (
+                                                <li key={j} className={j === q.correctAnswer ? "text-green-600 font-medium" : ""}>
+                                                  {opt} {j === q.correctAnswer && "✓"}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Actions */}
@@ -668,7 +705,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                   <Button variant="outline" onClick={() => setViewingModule(null)}>
                                     Close
                                   </Button>
-                                  <Button 
+                                  <Button
                                     onClick={() => {
                                       setViewingModule(null);
                                       // Create a deep copy to avoid mutating original
@@ -676,6 +713,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                         ...module,
                                         videoUrl: module.videoUrl || '',
                                         ageGroup: module.ageGroup || '',
+                                        questions: module.questions || []
                                       });
                                     }}
                                   >
@@ -685,6 +723,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                 </div>
                               </div>
                             )}
+                            </div>
                           </DialogContent>
                         </Dialog>
 
@@ -694,137 +733,123 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                               ...module,
                               videoUrl: module.videoUrl || '',
                               ageGroup: module.ageGroup || '',
+                              questions: module.questions || []
                             })}>
                               <Edit className="w-4 h-4" />
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-w-2xl">
+                          <DialogContent className="max-w-[90vw] lg:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col">
                             <DialogHeader>
                               <DialogTitle>Edit Module</DialogTitle>
                             </DialogHeader>
                             {editingModule && (
-                              <div className="space-y-4">
-                                <div>
-                                  <Label htmlFor="edit-title">Module Title</Label>
-                                  <Input
-                                    id="edit-title"
-                                    value={editingModule.title}
-                                    onChange={(e) => setEditingModule({ ...editingModule, title: e.target.value })}
-                                    placeholder="e.g., Color Recognition"
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="edit-description">Description</Label>
-                                  <Textarea
-                                    id="edit-description"
-                                    value={editingModule.description}
-                                    onChange={(e) => setEditingModule({ ...editingModule, description: e.target.value })}
-                                    placeholder="Describe what this module teaches..."
-                                  />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-4 overflow-y-auto pr-2 flex-1" style={{ maxHeight: 'calc(90vh - 120px)' }}>
                                   <div>
-                                    <Label htmlFor="edit-type">Module Type</Label>
-                                    <Select value={editingModule.type} onValueChange={(value: any) => setEditingModule({ ...editingModule, type: value })}>
-                                      <SelectTrigger id="edit-type">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="visual">Visual</SelectItem>
-                                        <SelectItem value="audio">Audio</SelectItem>
-                                        <SelectItem value="interactive">Interactive</SelectItem>
-                                        <SelectItem value="game">Game</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div>
-                                    <Label htmlFor="edit-difficulty">Difficulty</Label>
-                                    <Select value={editingModule.difficulty} onValueChange={(value: any) => setEditingModule({ ...editingModule, difficulty: value })}>
-                                      <SelectTrigger id="edit-difficulty">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="easy">Easy</SelectItem>
-                                        <SelectItem value="medium">Medium</SelectItem>
-                                        <SelectItem value="hard">Hard</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <Label htmlFor="edit-duration">Duration (minutes)</Label>
+                                    <Label htmlFor="edit-title">Module Title</Label>
                                     <Input
-                                      id="edit-duration"
-                                      type="number"
-                                      value={editingModule.duration}
-                                      onChange={(e) => setEditingModule({ ...editingModule, duration: parseInt(e.target.value) })}
+                                      id="edit-title"
+                                      value={editingModule.title}
+                                      onChange={(e) => setEditingModule({ ...editingModule, title: e.target.value })}
+                                      placeholder="e.g., Color Recognition"
                                     />
                                   </div>
                                   <div>
-                                    <Label htmlFor="edit-age-group">Age Group</Label>
-                                    <Input
-                                      id="edit-age-group"
-                                      value={editingModule.ageGroup}
-                                      onChange={(e) => setEditingModule({ ...editingModule, ageGroup: e.target.value })}
-                                      placeholder="e.g., 3-6"
+                                    <Label htmlFor="edit-description">Description</Label>
+                                    <Textarea
+                                      id="edit-description"
+                                      value={editingModule.description}
+                                      onChange={(e) => setEditingModule({ ...editingModule, description: e.target.value })}
+                                      placeholder="Describe what this module teaches..."
                                     />
                                   </div>
-                                </div>
-                                <div>
-                                  <Label>Video File (Optional)</Label>
-                                  {editingModule.videoUrl ? (
-                                    <div className="space-y-3">
-                                      {/* Current Video Display */}
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <Label htmlFor="edit-type">Module Type</Label>
+                                      <Select value={editingModule.type} onValueChange={(value: any) => setEditingModule({ ...editingModule, type: value })}>
+                                        <SelectTrigger id="edit-type">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="visual">Visual</SelectItem>
+                                          <SelectItem value="audio">Audio</SelectItem>
+                                          <SelectItem value="interactive">Interactive</SelectItem>
+                                          <SelectItem value="game">Game</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="edit-difficulty">Difficulty</Label>
+                                      <Select value={editingModule.difficulty} onValueChange={(value: any) => setEditingModule({ ...editingModule, difficulty: value })}>
+                                        <SelectTrigger id="edit-difficulty">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="easy">Easy</SelectItem>
+                                          <SelectItem value="medium">Medium</SelectItem>
+                                          <SelectItem value="hard">Hard</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <Label htmlFor="edit-duration">Duration (minutes)</Label>
+                                      <Input
+                                        id="edit-duration"
+                                        type="number"
+                                        value={editingModule.duration}
+                                        onChange={(e) => setEditingModule({ ...editingModule, duration: parseInt(e.target.value) })}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="edit-age">Age Group</Label>
+                                      <Select value={editingModule.ageGroup} onValueChange={(value) => setEditingModule({ ...editingModule, ageGroup: value })}>
+                                        <SelectTrigger id="edit-age">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="3-6">3-6 years</SelectItem>
+                                          <SelectItem value="4-7">4-7 years</SelectItem>
+                                          <SelectItem value="5-8">5-8 years</SelectItem>
+                                          <SelectItem value="6-9">6-9 years</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-video">Video Upload (Optional)</Label>
+                                    {isUploadingVideo ? (
+                                      <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center bg-blue-50">
+                                        <Upload className="w-8 h-8 mx-auto mb-2 text-blue-500 animate-pulse" />
+                                        <p className="text-sm text-blue-600 font-medium">Uploading video...</p>
+                                        <p className="text-xs text-blue-500 mt-1">Please wait while we upload your video</p>
+                                      </div>
+                                    ) : !editingModule.videoUrl ? (
+                                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                                        <input
+                                          id="edit-video"
+                                          type="file"
+                                          accept="video/*"
+                                          onChange={handleVideoUpload}
+                                          className="hidden"
+                                          disabled={isUploadingVideo}
+                                        />
+                                        <label htmlFor="edit-video" className="cursor-pointer">
+                                          <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                          <p className="text-sm text-gray-600 mb-1">Click to upload a video</p>
+                                          <p className="text-xs text-gray-400">MP4, WebM, or other video formats (max 100MB)</p>
+                                        </label>
+                                      </div>
+                                    ) : (
                                       <div className="relative border rounded-lg p-4 bg-gray-50">
                                         <button
-                                          onClick={async () => {
-                                            // Delete from Supabase Storage if it exists
-                                            if (editingModule.videoUrl.includes('module-videos')) {
-                                              try {
-                                                const filePath = editingModule.videoUrl.split('/').pop();
-                                                if (filePath) {
-                                                  await supabase.storage
-                                                    .from('module-videos')
-                                                    .remove([filePath]);
-                                                }
-                                              } catch (error) {
-                                                console.error('Error deleting video:', error);
-                                              }
-                                            }
-                                            setEditingModule({ ...editingModule, videoUrl: '' });
-                                            toast.success('Video removed');
-                                          }}
+                                          onClick={() => setEditingModule({ ...editingModule, videoUrl: '' })}
                                           className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                                           type="button"
                                         >
                                           <X className="w-4 h-4" />
                                         </button>
-                                        <div className="flex items-center space-x-2">
-                                          <Video className="w-5 h-5 text-gray-600" />
-                                          <p className="text-sm text-gray-700 truncate">{editingModule.videoUrl.split('/').pop()}</p>
-                                        </div>
-                                        <p className="text-xs text-green-600 mt-1">✓ Stored in cloud</p>
-                                      </div>
-                                      
-                                      {/* Replace Video Option */}
-                                      <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 text-center hover:border-blue-400 transition-colors bg-blue-50">
-                                        <input
-                                          id="edit-video-replace"
-                                          type="file"
-                                          accept="video/*"
-                                          onChange={async (e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                              if (!file.type.startsWith('video/')) {
-                                                toast.error('Invalid file type', { description: 'Please upload a video file' });
-                                                return;
-                                              }
-                                              if (file.size > 100 * 1024 * 1024) {
-                                                toast.error('File too large', { description: 'Max 100MB' });
-                                                return;
-                                              }
-                                              
                                               try {
                                                 // Delete old video first
                                                 if (editingModule.videoUrl.includes('module-videos')) {
@@ -835,11 +860,11 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                                       .remove([oldFilePath]);
                                                   }
                                                 }
-                                                
+
                                                 // Upload new video
                                                 const fileExt = file.name.split('.').pop();
                                                 const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-                                                
+
                                                 const { error } = await supabase.storage
                                                   .from('module-videos')
                                                   .upload(fileName, file, {
@@ -887,12 +912,12 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                               toast.error('File too large', { description: 'Max 100MB' });
                                               return;
                                             }
-                                            
+
                                             try {
                                               // Generate unique filename
                                               const fileExt = file.name.split('.').pop();
                                               const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-                                              
+
                                               // Upload to Supabase Storage
                                               const { data, error } = await supabase.storage
                                                 .from('module-videos')
@@ -924,10 +949,18 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                       </label>
                                     </div>
                                   )}
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Upload a video file that children will watch (max 100MB).
+                                  <p className="text-xs text-muted-foreground">
+                                    Upload a video that children will watch as part of this module.
                                   </p>
                                 </div>
+
+                                <div className="space-y-2">
+                                  <QuestionEditor
+                                    questions={editingModule.questions || []}
+                                    onChange={(questions) => setEditingModule({ ...editingModule, questions })}
+                                  />
+                                </div>
+
                                 <div className="flex justify-end space-x-2 pt-4">
                                   <Button variant="outline" onClick={() => setEditingModule(null)}>Cancel</Button>
                                   <Button onClick={handleEditModule}>Save Changes</Button>
@@ -989,71 +1022,71 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          </TabsContent>
+          </div>
+        </TabsContent>
 
-          <TabsContent value="analytics">
-            <Card>
-              <CardHeader>
-                <CardTitle>Learning Analytics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {statsCards.activeLearners === 0 ? (
-                  <div className="text-center py-12 px-4">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                      <Users className="w-8 h-8 text-blue-600" />
+        <TabsContent value="analytics">
+          <Card>
+            <CardHeader>
+              <CardTitle>Learning Analytics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statsCards.activeLearners === 0 ? (
+                <div className="text-center py-12 px-4">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+                    <Users className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">No Students Assigned</h3>
+                  <p className="text-gray-600 mb-4 max-w-md mx-auto">
+                    You don't have any children assigned to you yet. Analytics will appear once children are assigned and complete modules.
+                  </p>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-lg mx-auto text-left">
+                    <p className="text-sm font-semibold text-blue-900 mb-2">💡 To get started:</p>
+                    <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                      <li>Contact your administrator to assign children to your account</li>
+                      <li>Or run the SQL script: <code className="bg-blue-100 px-1 rounded">supabase/SQL/assign-children-to-educator.sql</code></li>
+                      <li>Children need to be linked via the <code className="bg-blue-100 px-1 rounded">educator_id</code> field</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : analytics.totalSessions === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-lg mb-2">No activity data yet</p>
+                  <p className="text-sm">You have {statsCards.activeLearners} student(s) assigned, but no completed modules yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-blue-50 rounded-lg">
+                      <h3 className="text-lg mb-2">Most Popular Module</h3>
+                      <p className="font-semibold">{analytics.mostPopularModule.name}</p>
+                      <p className="text-sm text-muted-foreground">{analytics.mostPopularModule.completionRate}% average score</p>
                     </div>
-                    <h3 className="text-xl font-semibold mb-2">No Students Assigned</h3>
-                    <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                      You don't have any children assigned to you yet. Analytics will appear once children are assigned and complete modules.
-                    </p>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-lg mx-auto text-left">
-                      <p className="text-sm font-semibold text-blue-900 mb-2">💡 To get started:</p>
-                      <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                        <li>Contact your administrator to assign children to your account</li>
-                        <li>Or run the SQL script: <code className="bg-blue-100 px-1 rounded">supabase/SQL/assign-children-to-educator.sql</code></li>
-                        <li>Children need to be linked via the <code className="bg-blue-100 px-1 rounded">educator_id</code> field</li>
-                      </ol>
+                    <div className="p-4 bg-green-50 rounded-lg">
+                      <h3 className="text-lg mb-2">Average Attention Span</h3>
+                      <p className="font-semibold">{analytics.avgAttentionSpan} minutes</p>
+                      <p className="text-sm text-muted-foreground">Across {analytics.totalSessions} sessions</p>
                     </div>
                   </div>
-                ) : analytics.totalSessions === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <p className="text-lg mb-2">No activity data yet</p>
-                    <p className="text-sm">You have {statsCards.activeLearners} student(s) assigned, but no completed modules yet</p>
+                  <div className="p-4 bg-purple-50 rounded-lg">
+                    <h3 className="text-lg mb-2">Engagement Insights</h3>
+                    {(() => {
+                      const engagement = getHighestEngagementType();
+                      return (
+                        <>
+                          <p>{engagement.type.charAt(0).toUpperCase() + engagement.type.slice(1)} modules show the highest engagement</p>
+                          <p className="text-sm text-muted-foreground">Consider creating more {engagement.type} content</p>
+                        </>
+                      );
+                    })()}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-blue-50 rounded-lg">
-                        <h3 className="text-lg mb-2">Most Popular Module</h3>
-                        <p className="font-semibold">{analytics.mostPopularModule.name}</p>
-                        <p className="text-sm text-muted-foreground">{analytics.mostPopularModule.completionRate}% average score</p>
-                      </div>
-                      <div className="p-4 bg-green-50 rounded-lg">
-                        <h3 className="text-lg mb-2">Average Attention Span</h3>
-                        <p className="font-semibold">{analytics.avgAttentionSpan} minutes</p>
-                        <p className="text-sm text-muted-foreground">Across {analytics.totalSessions} sessions</p>
-                      </div>
-                    </div>
-                    <div className="p-4 bg-purple-50 rounded-lg">
-                      <h3 className="text-lg mb-2">Engagement Insights</h3>
-                      {(() => {
-                        const engagement = getHighestEngagementType();
-                        return (
-                          <>
-                            <p>{engagement.type.charAt(0).toUpperCase() + engagement.type.slice(1)} modules show the highest engagement</p>
-                            <p className="text-sm text-muted-foreground">Consider creating more {engagement.type} content</p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
+    </div >
   );
 }

@@ -43,6 +43,14 @@ export interface LearningModule {
   createdBy: string;
   ageGroup: string;
   videoUrl?: string; // Optional video URL for the module
+  questions?: Question[];
+}
+
+export interface Question {
+  id: string;
+  text: string;
+  options: string[];
+  correctAnswer: number; // index of the correct option
 }
 
 export interface ProgressData {
