@@ -850,105 +850,17 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
                                         >
                                           <X className="w-4 h-4" />
                                         </button>
-                                              try {
-                                                // Delete old video first
-                                                if (editingModule.videoUrl.includes('module-videos')) {
-                                                  const oldFilePath = editingModule.videoUrl.split('/').pop();
-                                                  if (oldFilePath) {
-                                                    await supabase.storage
-                                                      .from('module-videos')
-                                                      .remove([oldFilePath]);
-                                                  }
-                                                }
-
-                                                // Upload new video
-                                                const fileExt = file.name.split('.').pop();
-                                                const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-                                                const { error } = await supabase.storage
-                                                  .from('module-videos')
-                                                  .upload(fileName, file, {
-                                                    cacheControl: '3600',
-                                                    upsert: false
-                                                  });
-
-                                                if (error) throw error;
-
-                                                // Get public URL
-                                                const { data: { publicUrl } } = supabase.storage
-                                                  .from('module-videos')
-                                                  .getPublicUrl(fileName);
-
-                                                setEditingModule({ ...editingModule, videoUrl: publicUrl });
-                                                toast.success('Video replaced!');
-                                              } catch (error: any) {
-                                                console.error('Error replacing video:', error);
-                                                toast.error('Upload failed', { description: error.message });
-                                              }
-                                            }
-                                          }}
-                                          className="hidden"
+                                        <video
+                                          src={editingModule.videoUrl}
+                                          controls
+                                          className="w-full max-h-48 rounded"
                                         />
-                                        <label htmlFor="edit-video-replace" className="cursor-pointer">
-                                          <Upload className="w-6 h-6 mx-auto mb-1 text-blue-500" />
-                                          <p className="text-xs text-blue-600 font-medium">Click to replace with new video</p>
-                                        </label>
+                                        <p className="text-sm text-gray-600 mt-2">
+                                          <Video className="w-4 h-4 inline mr-1" />
+                                          Current video
+                                        </p>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
-                                      <input
-                                        id="edit-video"
-                                        type="file"
-                                        accept="video/*"
-                                        onChange={async (e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) {
-                                            if (!file.type.startsWith('video/')) {
-                                              toast.error('Invalid file type', { description: 'Please upload a video file' });
-                                              return;
-                                            }
-                                            if (file.size > 100 * 1024 * 1024) {
-                                              toast.error('File too large', { description: 'Max 100MB' });
-                                              return;
-                                            }
-
-                                            try {
-                                              // Generate unique filename
-                                              const fileExt = file.name.split('.').pop();
-                                              const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-                                              // Upload to Supabase Storage
-                                              const { data, error } = await supabase.storage
-                                                .from('module-videos')
-                                                .upload(fileName, file, {
-                                                  cacheControl: '3600',
-                                                  upsert: false
-                                                });
-
-                                              if (error) throw error;
-
-                                              // Get public URL
-                                              const { data: { publicUrl } } = supabase.storage
-                                                .from('module-videos')
-                                                .getPublicUrl(fileName);
-
-                                              setEditingModule({ ...editingModule, videoUrl: publicUrl });
-                                              toast.success('Video uploaded!');
-                                            } catch (error: any) {
-                                              console.error('Error uploading video:', error);
-                                              toast.error('Upload failed', { description: error.message });
-                                            }
-                                          }
-                                        }}
-                                        className="hidden"
-                                      />
-                                      <label htmlFor="edit-video" className="cursor-pointer">
-                                        <Upload className="w-6 h-6 mx-auto mb-1 text-gray-400" />
-                                        <p className="text-xs text-gray-600">Click to upload video</p>
-                                      </label>
-                                    </div>
-                                  )}
+                                    )}
                                   <p className="text-xs text-muted-foreground">
                                     Upload a video that children will watch as part of this module.
                                   </p>
