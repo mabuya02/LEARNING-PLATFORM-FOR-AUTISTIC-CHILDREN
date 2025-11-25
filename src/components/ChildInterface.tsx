@@ -128,43 +128,33 @@ export function ChildInterface({ user, modules, progressData = [], onProgress, o
     setAttentionStartTime(null);
   };
 
-  // Check if child can progress to next difficulty level based on average score
+  // Check if child can progress to next difficulty level - unlock when one module left
   const checkProgressionUnlock = () => {
     if (!progressData || progressData.length === 0) return;
 
     const easyModules = modules.filter(m => m.difficulty === 'easy');
     const mediumModules = modules.filter(m => m.difficulty === 'medium');
     
-    // Calculate average score for easy level
-    const easyProgress = progressData.filter(p => 
-      easyModules.some(m => m.id === p.moduleId)
-    );
+    // Count completed modules for easy level (score >= 80)
+    const completedEasyCount = progressData.filter(p => 
+      easyModules.some(m => m.id === p.moduleId) && p.completionRate >= 80
+    ).length;
     
-    if (easyProgress.length > 0) {
-      const easyAvgScore = easyProgress.reduce((sum, p) => sum + p.completionRate, 0) / easyProgress.length;
-      console.log('📊 Easy level average score:', easyAvgScore.toFixed(2) + '%');
-      
-      // Unlock medium if easy level average is >= 60%
-      if (easyAvgScore >= 60 && !unlockedDifficulties.includes('medium')) {
-        console.log('🔓 Unlocking medium difficulty!');
-        setUnlockedDifficulties(prev => [...prev, 'medium']);
-      }
+    // Unlock medium when all easy modules are completed except one
+    if (easyModules.length > 0 && completedEasyCount >= easyModules.length - 1 && !unlockedDifficulties.includes('medium')) {
+      console.log(`🔓 Unlocking medium difficulty! (${completedEasyCount}/${easyModules.length} easy modules completed)`);
+      setUnlockedDifficulties(prev => [...prev, 'medium']);
     }
 
-    // Calculate average score for medium level
-    const mediumProgress = progressData.filter(p => 
-      mediumModules.some(m => m.id === p.moduleId)
-    );
+    // Count completed modules for medium level (score >= 80)
+    const completedMediumCount = progressData.filter(p => 
+      mediumModules.some(m => m.id === p.moduleId) && p.completionRate >= 80
+    ).length;
     
-    if (mediumProgress.length > 0) {
-      const mediumAvgScore = mediumProgress.reduce((sum, p) => sum + p.completionRate, 0) / mediumProgress.length;
-      console.log('📊 Medium level average score:', mediumAvgScore.toFixed(2) + '%');
-      
-      // Unlock hard if medium level average is >= 60%
-      if (mediumAvgScore >= 60 && !unlockedDifficulties.includes('hard')) {
-        console.log('🔓 Unlocking hard difficulty!');
-        setUnlockedDifficulties(prev => [...prev, 'hard']);
-      }
+    // Unlock hard when all medium modules are completed except one
+    if (mediumModules.length > 0 && completedMediumCount >= mediumModules.length - 1 && !unlockedDifficulties.includes('hard')) {
+      console.log(`🔓 Unlocking hard difficulty! (${completedMediumCount}/${mediumModules.length} medium modules completed)`);
+      setUnlockedDifficulties(prev => [...prev, 'hard']);
     }
   };
 

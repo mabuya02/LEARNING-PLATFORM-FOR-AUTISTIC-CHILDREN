@@ -197,7 +197,7 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
           .from('module-videos')
           .upload(filePath, file, {
             cacheControl: '3600',
-            upsert: false
+            upsert: true
           });
 
         if (error) {
@@ -329,12 +329,18 @@ export function EducatorDashboard({ user, modules, progressData = [], onAddModul
     }
   };
 
-  const handleDeleteModule = (module: LearningModule) => {
-    onDeleteModule(module.id);
-
-    toast.success('Module deleted successfully!', {
-      description: `"${module.title}" has been removed from your modules.`
-    });
+  const handleDeleteModule = async (module: LearningModule) => {
+    try {
+      await onDeleteModule(module.id);
+      toast.success('Module deleted successfully!', {
+        description: `"${module.title}" has been removed from your modules.`
+      });
+    } catch (error) {
+      console.error('Error deleting module:', error);
+      toast.error('Failed to delete module', {
+        description: 'Please try again.'
+      });
+    }
   };
 
   const getTypeColor = (type: string) => {

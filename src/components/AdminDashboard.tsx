@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -6,8 +6,9 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { childService } from '../services/childService';
+import { supabase } from '../lib/supabase';
 import { 
   AlertDialog, 
   AlertDialogCancel, 
@@ -58,6 +59,7 @@ export function AdminDashboard({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [childRecords, setChildRecords] = useState<any[]>([]);
   const [newUser, setNewUser] = useState({
     name: '',
     email: '',
@@ -65,6 +67,20 @@ export function AdminDashboard({
     educatorId: '',
     childId: undefined as string | undefined
   });
+
+  // Fetch child records on mount
+  useEffect(() => {
+    const fetchChildren = async () => {
+      try {
+        const records = await childService.getAllChildren();
+        setChildRecords(records || []);
+      } catch (error) {
+        console.error('Error fetching children:', error);
+        setChildRecords([]);
+      }
+    };
+    fetchChildren();
+  }, []);
 
   const handleCreateUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim()) return;
@@ -129,6 +145,23 @@ export function AdminDashboard({
         }
       } catch (error) {
         console.error('Error fetching child educator:', error);
+        setEditingUser(userData);
+      }
+    } else if (userData.role === 'parent') {
+      // If editing a parent, fetch their linked child_id from the profiles table
+      try {
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('child_id')
+          .eq('id', userData.id)
+          .single();
+        
+        if (error) throw error;
+        
+        const childId = profileData?.child_id;
+        setEditingUser({ ...userData, childId: childId && childId !== 'no-child' ? childId : undefined });
+      } catch (error) {
+        console.error('Error fetching parent child_id:', error);
         setEditingUser(userData);
       }
     } else {
@@ -303,6 +336,9 @@ export function AdminDashboard({
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Create New User</DialogTitle>
+                    <DialogDescription>
+                      Add a new user account with the appropriate role and permissions.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -367,19 +403,23 @@ export function AdminDashboard({
                       <div className="space-y-2">
                         <Label>Link to Child (Optional)</Label>
                         <Select 
-                          value={newUser.childId || ''} 
-                          onValueChange={(value) => setNewUser(prev => ({ ...prev, childId: value || undefined }))}
+                          value={newUser.childId || 'no-child'} 
+                          onValueChange={(value) => setNewUser(prev => ({ ...prev, childId: value === 'no-child' ? undefined : value }))}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select a child to link" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">No child linked</SelectItem>
-                            {children.map(child => (
-                              <SelectItem key={child.id} value={child.id}>
-                                {child.name} (Age: {child.age})
-                              </SelectItem>
-                            ))}
+                            <SelectItem value="no-child">No child linked</SelectItem>
+                            {childRecords && childRecords.length > 0 ? (
+                              childRecords.map(child => (
+                                <SelectItem key={child.id} value={child.id}>
+                                  {child.name} (Age: {child.age})
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="none" disabled>No children available</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                         <p className="text-xs text-muted-foreground">
@@ -585,6 +625,9 @@ export function AdminDashboard({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Update user information and role assignments.
+            </DialogDescription>
           </DialogHeader>
           {editingUser && (
             <div className="space-y-4">
@@ -633,11 +676,15 @@ export function AdminDashboard({
                       <SelectValue placeholder="Select an educator" />
                     </SelectTrigger>
                     <SelectContent>
-                      {allUsers.filter(u => u.role === 'educator').map(educator => (
-                        <SelectItem key={educator.id} value={educator.id}>
-                          {educator.name} ({educator.email})
-                        </SelectItem>
-                      ))}
+                      {allUsers && allUsers.filter(u => u.role === 'educator').length > 0 ? (
+                        allUsers.filter(u => u.role === 'educator').map(educator => (
+                          <SelectItem key={educator.id} value={educator.id}>
+                            {educator.name} ({educator.email})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>No educators available</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -649,19 +696,23 @@ export function AdminDashboard({
                 <div className="space-y-2">
                   <Label>Link to Child (Optional)</Label>
                   <Select 
-                    value={editingUser.childId || ''} 
-                    onValueChange={(value) => setEditingUser(prev => prev ? { ...prev, childId: value || undefined } : null)}
+                    value={editingUser.childId || 'no-child'} 
+                    onValueChange={(value) => setEditingUser(prev => prev ? { ...prev, childId: value === 'no-child' ? undefined : value } : null)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a child to link" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No child linked</SelectItem>
-                      {children.map((child) => (
-                        <SelectItem key={child.id} value={child.id}>
-                          {child.name} (Age: {child.age})
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="no-child">No child linked</SelectItem>
+                      {childRecords && childRecords.length > 0 ? (
+                        childRecords.map((child) => (
+                          <SelectItem key={child.id} value={child.id}>
+                            {child.name} (Age: {child.age})
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>No children available</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">

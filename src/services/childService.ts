@@ -55,6 +55,17 @@ export const childService = {
     return data;
   },
 
+  // Get all children
+  async getAllChildren(): Promise<Child[]> {
+    const { data, error } = await supabase
+      .from('children')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
   // Update child
   async updateChild(childId: string, updates: Partial<Child>): Promise<Child> {
     const { data, error } = await supabase
